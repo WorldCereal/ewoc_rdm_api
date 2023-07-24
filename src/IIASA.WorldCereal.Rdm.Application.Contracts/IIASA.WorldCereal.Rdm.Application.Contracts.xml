@@ -1,0 +1,233 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>IIASA.WorldCereal.Rdm.Application.Contracts</name>
+    </assembly>
+    <members>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.AddMasterCollectionStoreInfoDto.FirstDateOfValidityTime">
+            <summary>
+            FirstDateOfValidityTime eg - 2019-06-30T00:00:00Z (yyyy-MM-ddTHH:mm:ssZ)
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.AddMasterCollectionStoreInfoDto.LastDateOfValidityTime">
+            <summary>
+            LastDateOfValidityTime eg - 2019-06-30T00:00:00Z (yyyy-MM-ddTHH:mm:ssZ)
+            </summary>
+        </member>
+        <member name="T:IIASA.WorldCereal.Rdm.Dtos.GeoJson.FeatureCollectionGeoJSON">
+            <summary>
+            
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.GeoJson.FeatureCollectionGeoJSON.Type">
+            <summary>
+            Gets or Sets Type
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.GeoJson.FeatureCollectionGeoJSON.Features">
+            <summary>
+            Gets or Sets Features
+            </summary>
+        </member>
+        <member name="T:IIASA.WorldCereal.Rdm.Dtos.GeoJson.FeatureGeoJson">
+            <summary>
+            
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.GeoJson.FeatureGeoJson.Type">
+            <summary>
+            Gets or Sets Type
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.GeoJson.FeatureGeoJson.Geometry">
+            <summary>
+            Gets or Sets Geometry
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.GeoJson.FeatureGeoJson.Properties">
+            <summary>
+            Gets or Sets Properties
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.GeoJson.FeatureGeoJson.Id">
+            <summary>
+            Gets or Sets Sample ID, 
+            </summary>
+        </member>
+        <member name="T:IIASA.WorldCereal.Rdm.Dtos.GeoJson.Geometry">
+            <summary>
+            
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.GeoJson.Geometry.Type">
+            <summary>
+            Gets or Sets coordinates
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.GeoJson.Geometry.Coordinates">
+            <summary>
+            Gets or Sets coordinates
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemSearch.SkipCount">
+            <summary>
+            SkipCount count
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemSearch.MaxResultCount">
+            <summary>
+            MaxResultCount the count of items returned
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemSearch.ValidityTime">
+            <summary>
+            The optional ValidityStartTime for range eg - 2019-06-30T00:00:00Z (yyyy-MM-ddTHH:mm:ssZ)
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemSearch.LandCoverTypes">
+            <summary>
+            The optional LandCoverTypes to be selected
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemSearch.LandCoverConfidence">
+            <summary>
+            The optional LandCoverConfidence to be selected
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemSearch.CropTypes">
+            <summary>
+            The optional CropTypes to be selected
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemSearch.CropTypeConfidence">
+            <summary>
+            The optional CropTypeConfidence to be selected
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemSearch.IrrigationTypes">
+            <summary>
+            The optional IrrigationTypes to be selected
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemSearch.IrrigationConfidence">
+            <summary>
+            The optional IrrigationConfidence to be selected
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemSearch.Bbox">
+            <summary>
+            Only features that have a geometry that intersects the bounding box are selected. The bounding box is provided as four decimals:  * Lower left corner, coordinate axis 1 * Lower left corner, coordinate axis 2 * Upper right corner, coordinate axis 1 * Upper right corner, coordinate axis 2  The coordinate reference system of the values is always WGS 84 longitude/latitude (http://www.opengis.net/def/crs/OGC/1.3/CRS84). The values are sequence of minimum longitude, minimum latitude, maximum longitude and maximum latitude.
+            </summary>
+        </member>
+        <member name="T:IIASA.WorldCereal.Rdm.Dtos.ValueRange">
+            <summary>
+            Optional Range
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ValueRange.Start">
+            <summary>
+            decimal Start value, Default=0
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ValueRange.End">
+            <summary>
+            decimal End value, Default=100
+            </summary>
+        </member>
+        <member name="T:IIASA.WorldCereal.Rdm.Dtos.TimeRange">
+            <summary>
+            Optional Range
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.TimeRange.Start">
+            <summary>
+            Optional StartTime eg - 2019-06-30T00:00:00Z (yyyy-MM-ddTHH:mm:ssZ)
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.TimeRange.End">
+            <summary>
+            Optional EndTime eg - 2019-06-30T00:00:00Z (yyyy-MM-ddTHH:mm:ssZ)
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemsRequestFilter.SkipCount">
+            <summary>
+            Offset count
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemsRequestFilter.MaxResultCount">
+            <summary>
+            limits the count of items returned
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemsRequestFilter.ValidityStartTime">
+            <summary> 
+            The optional ValidityStartTime eg - 2019-06-30T00:00:00Z (yyyy-MM-ddTHH:mm:ssZ)
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemsRequestFilter.ValidityEndTime">
+            <summary>
+            The optional ValidityEndTime eg - 2019-12-31T00:00:00Z (yyyy-MM-ddTHH:mm:ssZ)
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemsRequestFilter.LandCoverTypes">
+            <summary>
+            The optional LandCoverTypes to be selected
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemsRequestFilter.CropTypes">
+            <summary>
+            The optional CropTypes to be selected
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemsRequestFilter.IrrigationTypes">
+            <summary>
+            The optional IrrigationTypes to be selected
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemsRequestFilter.Split">
+            <summary>
+            CAL, VAL, TEST samples
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.ItemsRequestFilter.Bbox">
+            <summary>
+            Only features that have a geometry that intersects the bounding box are selected. The bounding box is provided as four decimals:  * Lower left corner, coordinate axis 1 * Lower left corner, coordinate axis 2 * Upper right corner, coordinate axis 1 * Upper right corner, coordinate axis 2  The coordinate reference system of the values is always WGS 84 longitude/latitude (http://www.opengis.net/def/crs/OGC/1.3/CRS84). The values are sequence of minimum longitude, minimum latitude, maximum longitude and maximum latitude.
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.MasterCollectionStoreInfoDto.FirstDateOfValidityTime">
+            <summary>
+            The optional FirstDateOfValidityTime eg - 2019-06-30T00:00:00Z (yyyy-MM-ddTHH:mm:ssZ)
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.MasterCollectionStoreInfoDto.LastDateOfValidityTime">
+            <summary>
+            The optional LastDateOfValidityTime eg - 2019-06-30T00:00:00Z (yyyy-MM-ddTHH:mm:ssZ)
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.SampleSearchFilter.Bbox">
+            <summary>
+            Only features that have a geometry that intersects the bounding box are selected. The bounding box is provided as four decimals:  * Lower left corner, coordinate axis 1 * Lower left corner, coordinate axis 2 * Upper right corner, coordinate axis 1 * Upper right corner, coordinate axis 2  The coordinate reference system of the values is always WGS 84 longitude/latitude (http://www.opengis.net/def/crs/OGC/1.3/CRS84). The values are sequence of minimum longitude, minimum latitude, maximum longitude and maximum latitude.
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.SampleSearchFilter.Version">
+            <summary>
+            Version of the Patch Sample
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.SampleSearchFilter.ValidityStartTime">
+            <summary>
+            Optional Validity Range StartTime eg - 2019-06-30T00:00:00Z (yyyy-MM-ddTHH:mm:ssZ)
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.SampleSearchFilter.ValidityEndTime">
+            <summary>
+            Optional Validity Range EndTime eg - 2019-12-31T00:00:00Z (yyyy-MM-ddTHH:mm:ssZ)
+            </summary>
+        </member>
+        <member name="P:IIASA.WorldCereal.Rdm.Dtos.SampleSearchFilter.Split">
+            <summary>
+            CAL, VAL, TEST samples
+            </summary>
+        </member>
+    </members>
+</doc>

@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "ConsortiumDbUpdate": {
+      "commandName": "Project"
+    },
+    "Docker": {
+      "commandName": "Docker"
+    }
+  }
+}

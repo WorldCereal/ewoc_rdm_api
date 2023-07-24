@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net5.0</TargetFramework>
+    <RootNamespace>IIASA.WorldCereal.Rdm</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IIASA.WorldCereal.Rdm.EntityFrameworkCore.DbMigrations\IIASA.WorldCereal.Rdm.EntityFrameworkCore.DbMigrations.csproj" />
+    <ProjectReference Include="..\IIASA.WorldCereal.Rdm.TestBase\IIASA.WorldCereal.Rdm.TestBase.csproj" />
+    <PackageReference Include="Volo.Abp.EntityFrameworkCore.Sqlite" Version="4.3.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.9.1" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>IIASA.WorldCereal.Rdm.Application</name>
+    </assembly>
+    <members>
+        <member name="M:IIASA.WorldCereal.Rdm.Services.CollectionSearchService.Get(IIASA.WorldCereal.Rdm.Dtos.ItemSearch)">
+            <summary>
+            Get collections
+            </summary>
+            <remarks>Gets list of Collections based on query parameters. Empty parameter are treated as * and all values are returned. BBox is mandatory</remarks>
+            <param name="itemSearch">Filter to select features based on landcover, crop type, irrigation codes and validity time range and bounding box</param>
+        </member>
+        <member name="M:IIASA.WorldCereal.Rdm.Services.ItemService.GetFeature(System.String,System.String)">
+            <summary>
+            Get single feature
+            </summary>
+            <remarks>Fetch the feature with id &#x60;featureId&#x60; in the feature collection with id &#x60;collectionId&#x60;.  Use content negotiation to request HTML or GeoJSON.</remarks>
+            <param name="collectionId">local identifier of a collection</param>
+            <param name="featureId">local identifier of a feature</param>
+            <response code="200">fetch the feature with id &#x60;featureId&#x60; in the feature collection with id &#x60;collectionId&#x60;</response>
+            <response code="404">The requested URI was not found.</response>
+            <response code="500">A server error occurred.</response>
+        </member>
+        <member name="M:IIASA.WorldCereal.Rdm.Services.ItemService.GetFeatures(System.String,IIASA.WorldCereal.Rdm.Dtos.ItemsRequestFilter)">
+            <summary>
+            Get Features From collection
+            </summary>
+            <remarks>Fetch features of the feature collection with sampleID and &#x60;collectionId&#x60;.</remarks>
+            <param name="collectionId">local identifier of a collection</param>
+            <param name="itemsRequestFilter">Filter to select features based on landcover, crop type, irrigation codes and Validity time range and Bounding box</param>
+        </member>
+        <member name="M:IIASA.WorldCereal.Rdm.Services.MasterCollectionStoreService.Create(IIASA.WorldCereal.Rdm.Dtos.AddMasterCollectionStoreInfoDto)">
+            <summary>
+            Create Consortium collection
+            </summary>
+            <remarks>This creates a collection without any validation and prepares for feature injection.</remarks>
+            <param name="addMasterCollectionStore"></param>
+        </member>
+    </members>
+</doc>

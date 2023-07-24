@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net5.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="appsettings.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetTopologySuite.IO.GeoJSON" Version="2.0.4" />
+    <PackageReference Include="NetTopologySuite.IO.GeoJSON4STJ" Version="2.1.1" />
+    <PackageReference Include="NetTopologySuite.IO.ShapeFile" Version="2.0.0" />
+    <PackageReference Include="Npgsql.Bulk" Version="0.9.0" />
+    <PackageReference Include="ProjNET4GeoAPI" Version="1.4.1" />
+  </ItemGroup>
+ 
+
+  <ItemGroup>
+    <None Update="SRID.csv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+ 
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IIASA.WorldCereal.Rdm.Application\IIASA.WorldCereal.Rdm.Application.csproj" />
+    <ProjectReference Include="..\..\src\IIASA.WorldCereal.Rdm.Domain\IIASA.WorldCereal.Rdm.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

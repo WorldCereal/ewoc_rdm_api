@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "IIASA.WorldCereal.Rdm.DbMigrator": {
+      "commandName": "Project"
+    },
+    "Docker": {
+      "commandName": "Docker"
+    }
+  }
+}

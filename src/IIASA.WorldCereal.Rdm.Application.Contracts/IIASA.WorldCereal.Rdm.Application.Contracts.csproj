@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props" />
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>IIASA.WorldCereal.Rdm</RootNamespace>
+  </PropertyGroup>
+  
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <GenerateSerializationAssemblies>Off</GenerateSerializationAssemblies>
+    <DocumentationFile>..\IIASA.WorldCereal.Rdm.Application.Contracts\IIASA.WorldCereal.Rdm.Application.Contracts.xml</DocumentationFile>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <ProjectReference Include="..\IIASA.WorldCereal.Rdm.Domain.Shared\IIASA.WorldCereal.Rdm.Domain.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Volo.Abp.ObjectExtending" Version="4.3.2" />
+    <PackageReference Include="Volo.Abp.Account.Application.Contracts" Version="4.3.2" />
+    <PackageReference Include="Volo.Abp.Identity.Application.Contracts" Version="4.3.2" />
+    <PackageReference Include="Volo.Abp.PermissionManagement.Application.Contracts" Version="4.3.2" />
+    <PackageReference Include="Volo.Abp.TenantManagement.Application.Contracts" Version="4.3.2" />
+    <PackageReference Include="Volo.Abp.FeatureManagement.Application.Contracts" Version="4.3.2" />
+    <PackageReference Include="Volo.Abp.SettingManagement.Application.Contracts" Version="4.3.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="IIASA.WorldCereal.Rdm.Application.Contracts.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
