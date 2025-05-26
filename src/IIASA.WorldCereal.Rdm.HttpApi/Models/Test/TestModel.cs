@@ -1,11 +1,10 @@
 ﻿using System;
 
-namespace IIASA.WorldCereal.Rdm.Models.Test
-{
-    public class TestModel
-    {
-        public string Name { get; set; }
+namespace IIASA.WorldCereal.Rdm.Models.Test;
 
-        public DateTime BirthDate { get; set; }
-    }
+public class TestModel
+{
+    public string? Name { get; set; }
+
+    public DateTime BirthDate { get; set; }
 }

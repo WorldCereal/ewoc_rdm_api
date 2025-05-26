@@ -18,14 +18,15 @@ namespace IIASA.WorldCereal.Rdm.Entity
         [Required] public string CollectionId { get; set; } // tenant name
         [Required] public string SampleId { get; set; } // item Id
         [Required] public Geometry Geometry { set; get; }
+        [Required] public long EwocCode { get; set; }
+        [Required] public int IrrigationStatus { get; set; }
         [Required] public DateTime ValidityTime { get; set; } //YYYY-MM-DD
-        public double Area { get; set; }
-        public SplitType Split { get; set; }   
-        public int Lc { get; set; }
-        public int Ct { get; set; }
-        public int Irr { get; set; }
-        public int UserConf { get; set; }
-        public DateTime? ImageryTime { get; set; }
+        public int Extract { get; set; }
+        public string H3Index { get; set; }
+        public int LcQualityScore { get; set; }
+        public int CtQualityScore { get; set; }
+        public int QualityScore { get; set; }
+        public DateTime? ImageryDate { get; set; }
         public int? NumberOfValidations { get; set; }
         public ValidatorType? TypeOfValidator { get; set; }
         public int? AgreementOfObservations { get; set; }

@@ -6,6 +6,7 @@ namespace IIASA.WorldCereal.Rdm.Enums
     public enum StoreType
     {
         Reference, // consortium datasets
-        Community // user uploaded datasets
+        Community, // user uploaded datasets
+        All
     }
 }

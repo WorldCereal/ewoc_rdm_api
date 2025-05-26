@@ -9,10 +9,11 @@ namespace IIASA.WorldCereal.Rdm.Dtos
     {
         public ItemsRequestFilter()
         {
-            MaxMaxResultCount = 10000;
-            LandCoverTypes = new int[0];
-            CropTypes = new int[0];
-            IrrigationTypes = new int[0];
+            MaxResultCount = 10;
+            EwocCodes = [];
+            IrrigationTypes = [];
+            ExtractTypes = [];
+            H3Indexes = [];
         }
 
         /// <summary>
@@ -29,36 +30,50 @@ namespace IIASA.WorldCereal.Rdm.Dtos
         /// The optional ValidityStartTime eg - 2019-06-30T00:00:00Z (yyyy-MM-ddTHH:mm:ssZ)
         /// </summary>
         public DateTime? ValidityStartTime { get; set; }
+
         /// <summary>
         /// The optional ValidityEndTime eg - 2019-12-31T00:00:00Z (yyyy-MM-ddTHH:mm:ssZ)
         /// </summary>
         public DateTime? ValidityEndTime { get; set; }
-        /// <summary>
-        /// The optional LandCoverTypes to be selected
-        /// </summary>
-        public int[] LandCoverTypes { get; set; }
+
         /// <summary>
         /// The optional CropTypes to be selected
         /// </summary>
-        public int[] CropTypes { get; set; }
+        public long[] EwocCodes { get; set; }
+
         /// <summary>
         /// The optional IrrigationTypes to be selected
         /// </summary>
         public int[] IrrigationTypes { get; set; }
-        
+
         /// <summary>
-        /// CAL, VAL, TEST samples
+        /// The optional ExtractValue to be selected
         /// </summary>
-        public string Split { get; set; }
+        public int[] ExtractTypes { get; set; }
+
+        /// <summary>
+        /// The optional H3Indexes to be selected
+        /// </summary>
+        public string[] H3Indexes { get; set; }
 
         /// <summary>
         /// Only features that have a geometry that intersects the bounding box are selected. The bounding box is provided as four decimals:  * Lower left corner, coordinate axis 1 * Lower left corner, coordinate axis 2 * Upper right corner, coordinate axis 1 * Upper right corner, coordinate axis 2  The coordinate reference system of the values is always WGS 84 longitude/latitude (http://www.opengis.net/def/crs/OGC/1.3/CRS84). The values are sequence of minimum longitude, minimum latitude, maximum longitude and maximum latitude.
         /// </summary>
         public ICollection<double?> Bbox { get; set; }
 
+        /// <summary>
+        /// The optional LandCoverConfidence to be selected
+        /// </summary>
+        public ValueRange? LandCoverConfidence { get; set; }
+
+        /// <summary>
+        /// The optional CropTypeConfidence to be selected
+        /// </summary>
+        public ValueRange? CropTypeConfidence { get; set; }
+
         public IEnumerable<CoordinateDto> GetBoundingBoxPoints()
         {
-            if(Bbox== null) return  new List<CoordinateDto>();
+            if (Bbox == null) return new List<CoordinateDto>();
 
             var bboxPoints = Bbox.ToList();
 
@@ -69,11 +84,11 @@ namespace IIASA.WorldCereal.Rdm.Dtos
 
             return new List<CoordinateDto>
             {
-                new CoordinateDto {Latitude = xmin, Longitude = ymin},
-                new CoordinateDto {Latitude = xmax, Longitude = ymin},
-                new CoordinateDto {Latitude = xmax, Longitude = ymax},
-                new CoordinateDto {Latitude = xmin, Longitude = ymax},
-                new CoordinateDto {Latitude = xmin, Longitude = ymin}
+                new CoordinateDto { Latitude = xmin, Longitude = ymin },
+                new CoordinateDto { Latitude = xmax, Longitude = ymin },
+                new CoordinateDto { Latitude = xmax, Longitude = ymax },
+                new CoordinateDto { Latitude = xmin, Longitude = ymax },
+                new CoordinateDto { Latitude = xmin, Longitude = ymin }
             };
         }
     }

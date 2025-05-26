@@ -9,7 +9,8 @@ namespace IIASA.WorldCereal.Rdm.Enums
         Decimal,
         Date,
         Text,
-        Unique
+        Unique,
+        BigInteger,
     }
     
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -18,7 +19,7 @@ namespace IIASA.WorldCereal.Rdm.Enums
         SubmittedForReview,
         ReviewInProgress,
         NeedsFix,
-        Accepted,
+        VerifiedAndAccepted,
         Public
     }
 }

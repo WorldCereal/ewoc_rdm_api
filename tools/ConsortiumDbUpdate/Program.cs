@@ -1,5 +1,6 @@
-﻿using System.Threading.Tasks;
-using IIASA.WorldCereal.Rdm.Core;
+﻿using IIASA.WorldCereal.Rdm.Core;
+using IIASA.WorldCereal.Rdm.Core.Vector;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -18,19 +19,31 @@ namespace ConsortiumDbUpdate
                 .MinimumLevel.Override("Volo.Abp", LogEventLevel.Warning)
                 .MinimumLevel.Override("IIASA.WorldCereal.Rdm", LogEventLevel.Debug)
                 .Enrich.FromLogContext()
-                .WriteTo.Async(c => c.File("Logs/logs.txt"))
-                .WriteTo.Async(c => c.Console())
                 .CreateLogger();
 
             await CreateHostBuilder(args).RunConsoleAsync();
         }
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
-            Host.CreateDefaultBuilder(args)
-                .ConfigureLogging((context, logging) => logging.ClearProviders())
+            Host.CreateDefaultBuilder(args).ConfigureAppConfiguration((context, builder) =>
+                {
+                    var env = context.HostingEnvironment;
+                    builder.SetBasePath(AppContext.BaseDirectory)
+                        .AddJsonFile("appsettings.json", optional: false).AddEnvironmentVariables();
+
+                    var configuration = builder.Build();
+                    var connectionString = configuration["ConnectionStrings:default"];
+                    Console.WriteLine($"Default Connection String - {connectionString}");
+                })
+                .ConfigureLogging((context, logging) =>
+                {
+                    logging.ClearProviders();
+                    logging.AddConsole();
+                })
                 .ConfigureServices((hostContext, services) =>
                 {
                     services.AddScoped<IAddCollectionHelper, AddCollectionHelper>();
+                    services.AddScoped<IItemsCodeStatsHelper, ItemsCodeStatsHelper>();
                     services.AddScoped<IGeoJsonHelper, GeoJsonHelper>();
                     services.AddHostedService<ConsortiumCollectionsHostedService>();
                 });

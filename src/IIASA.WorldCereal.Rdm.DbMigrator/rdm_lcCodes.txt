@@ -1,0 +1,13 @@
+0,unknown
+10,cropland_unspecified
+11,temporary_crops
+12,permanent_crops
+60,built_up
+16,No cropland, not further specified
+17,No temporary crops, not further specified
+20,non_cropland_herbaceous
+25,non_cropland_mixed
+30,shrubland
+40,trees
+50,bare_sparsely_vegetated
+70,water

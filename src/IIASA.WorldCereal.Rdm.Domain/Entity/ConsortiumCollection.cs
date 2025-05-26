@@ -7,8 +7,8 @@ namespace IIASA.WorldCereal.Rdm.Entity
         public string DownloadZipUrl { get; set; }
         
         public bool Successful { get; set; }
-        
-        public string Errors{ get; set; }
+
+        public string Errors { get; set; } = string.Empty;
         
         public bool NeedsUpdate{ get; set; }
         

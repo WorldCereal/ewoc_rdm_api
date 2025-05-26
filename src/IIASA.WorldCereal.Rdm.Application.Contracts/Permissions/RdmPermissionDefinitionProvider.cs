@@ -2,21 +2,19 @@
 using Volo.Abp.Authorization.Permissions;
 using Volo.Abp.Localization;
 
-namespace IIASA.WorldCereal.Rdm.Permissions
+namespace IIASA.WorldCereal.Rdm.Permissions;
+
+public class RdmPermissionDefinitionProvider : PermissionDefinitionProvider
 {
-    public class RdmPermissionDefinitionProvider : PermissionDefinitionProvider
+    public override void Define(IPermissionDefinitionContext context)
     {
-        public override void Define(IPermissionDefinitionContext context)
-        {
-            var myGroup = context.AddGroup(RdmPermissions.GroupName);
+        var myGroup = context.AddGroup(RdmPermissions.GroupName);
+        //Define your own permissions here. Example:
+        //myGroup.AddPermission(RdmPermissions.MyPermission1, L("Permission:MyPermission1"));
+    }
 
-            //Define your own permissions here. Example:
-            //myGroup.AddPermission(RdmPermissions.MyPermission1, L("Permission:MyPermission1"));
-        }
-
-        private static LocalizableString L(string name)
-        {
-            return LocalizableString.Create<RdmResource>(name);
-        }
+    private static LocalizableString L(string name)
+    {
+        return LocalizableString.Create<RdmResource>(name);
     }
 }

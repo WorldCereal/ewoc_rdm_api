@@ -4,7 +4,7 @@ using Volo.Abp.Application.Dtos;
 
 namespace IIASA.WorldCereal.Rdm.Dtos
 {
-    public class StoreDto : AuditedEntityDto<Guid>
+    public class StoreDto : EntityDto<Guid>
     {
         public string ConnectionString { get; set; }
 
@@ -13,5 +13,18 @@ namespace IIASA.WorldCereal.Rdm.Dtos
         public string Name { get; set; }
 
         public int Count { get; set; }
+    }
+
+    public class EoTypeDto : EntityDto<int>
+    {
+        public string Name { get; set; }
+        public long Value { get; set; }
+        public CodeType CodeType { get; set; }
+    }
+
+    public class CollectionStats
+    {
+        public int TotalCollections { get; set; }
+        public long FeaturesTotalCount { get; set; }
     }
 }

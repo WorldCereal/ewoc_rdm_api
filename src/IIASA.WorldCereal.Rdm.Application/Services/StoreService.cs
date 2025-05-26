@@ -5,53 +5,77 @@ using System.Threading.Tasks;
 using IIASA.WorldCereal.Rdm.Core;
 using IIASA.WorldCereal.Rdm.Dtos;
 using IIASA.WorldCereal.Rdm.Entity;
+using IIASA.WorldCereal.Rdm.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Volo.Abp;
 using Volo.Abp.Domain.Repositories;
+using Volo.Abp.Identity;
 
 namespace IIASA.WorldCereal.Rdm.Services
 {
     [RemoteService(Name = "OGC")]
     [ApiExplorerSettings(GroupName = "OGC")]
+    [Authorize]
     public class StoreService : RdmAppService
     {
         private readonly IRepository<StoreEntity, Guid> _storeRepository;
         private readonly IAddCollectionHelper _addCollectionHelper;
         private readonly IRepository<ConsortiumCollection> _consortiumCollectionsRepository;
-        private readonly IEwocUser _ewocUser;
+        private IAccessProvider _accessProvider;
 
         public StoreService(IRepository<StoreEntity, Guid> storeRepository, IAddCollectionHelper addCollectionHelper,
-            IRepository<ConsortiumCollection> consortiumCollectionsRepository,
-            IEwocUser ewocUser)
+            IRepository<ConsortiumCollection> consortiumCollectionsRepository, IAccessProvider accessProvider
+        )
         {
+            _accessProvider = accessProvider;
             _storeRepository = storeRepository;
             _addCollectionHelper = addCollectionHelper;
             _consortiumCollectionsRepository = consortiumCollectionsRepository;
-            _ewocUser = ewocUser;
         }
 
         [HttpGet("store")]
         public async Task<IEnumerable<StoreDto>> Get()
         {
-            if (_ewocUser.IsAdmin == false)
-            {
-                throw new UnauthorizedAccessException("Admin Auth required.");
-            }
-
             var stores = await _storeRepository.GetListAsync();
             return stores.Select(x => ObjectMapper.Map<StoreEntity, StoreDto>(x));
         }
 
         [HttpGet("user/isadmin")]
-        public bool GetIsAdmin()
+        public async Task<bool> GetIsAdmin()
         {
-            return _ewocUser.IsAdmin;
+            return await _accessProvider.IsAdmin();
+        }
+
+        [HttpGet("user/ismoderator")]
+        public async Task<bool> GetIsModerator()
+        {
+            return (await _accessProvider.User()).UserRole == UserRole.Moderator;
+        }
+
+        [HttpGet("user/role")]
+        public async Task<string> GetRole()
+        {
+            try
+            {
+                return (await _accessProvider.User()).UserRole.ToString("G");
+            }
+            catch (Exception e)
+            {
+                return UserRole.User.ToString("G");
+            }
+        }
+
+        [HttpGet("user/id")]
+        public async Task<string> GetUserId()
+        {
+            return (await _accessProvider.User()).UserId.ToString("D");
         }
 
         [HttpPost("store")]
         public async Task<StoreDto> Create(AddStoreDto storeDto)
         {
-            if (_ewocUser.IsAdmin == false)
+            if (await _accessProvider.IsAdmin() == false)
             {
                 throw new UnauthorizedAccessException("Admin Auth required.");
             }
@@ -64,7 +88,7 @@ namespace IIASA.WorldCereal.Rdm.Services
         [HttpGet("store/ref/collection")]
         public async Task<IEnumerable<ConsortiumCollectionDto>> GetCollections()
         {
-            if (_ewocUser.IsAdmin == false)
+            if (await _accessProvider.IsAdmin() == false)
             {
                 throw new UnauthorizedAccessException("Admin Auth required.");
             }
@@ -74,18 +98,23 @@ namespace IIASA.WorldCereal.Rdm.Services
         }
 
         [HttpPost("store/ref/collection")]
-        public async Task<IActionResult> AddCollection(string downloadUrl, bool update)
+        public async Task<IActionResult> AddCollection(AddUrlsForConsortiumUpload upload)
         {
-            if (_ewocUser.IsAdmin == false)
+            if (await _accessProvider.IsAdmin() == false)
             {
                 throw new UnauthorizedAccessException("Admin Auth required.");
             }
 
-            var newStore = await _consortiumCollectionsRepository.InsertAsync(new ConsortiumCollection
-                {DownloadZipUrl = downloadUrl, NeedsUpdate = update});
+            var entities = new List<ConsortiumCollection>();
+            foreach (var url in upload.Urls)
+            {
+                entities.Add(new ConsortiumCollection(){DownloadZipUrl = url,NeedsUpdate = upload.NeedsUpdate});
+            }
+
+            await _consortiumCollectionsRepository.InsertManyAsync(entities);
             return new OkObjectResult(new
             {
-                Result = ObjectMapper.Map<ConsortiumCollection, ConsortiumCollectionDto>(newStore),
+                Result = ObjectMapper.Map<ConsortiumCollection[], ConsortiumCollectionDto[]>(entities.ToArray()),
                 Message = "Added collection to table. Next you need to run the ref db update job in k8s."
             });
         }
@@ -93,7 +122,7 @@ namespace IIASA.WorldCereal.Rdm.Services
         [HttpPut("store/ref/collection/{id:int}")]
         public async Task UpdateCollection(int id, bool update, bool overwriteFeatures, bool overwriteOtherProps)
         {
-            if (_ewocUser.IsAdmin == false)
+            if (await _accessProvider.IsAdmin() == false)
             {
                 throw new UnauthorizedAccessException("Admin Auth required.");
             }
@@ -108,7 +137,7 @@ namespace IIASA.WorldCereal.Rdm.Services
         [HttpDelete("store/ref/collection/{id:int}")]
         public async Task DeleteCollection(int id)
         {
-            if (_ewocUser.IsAdmin == false)
+            if (await _accessProvider.IsAdmin() == false)
             {
                 throw new UnauthorizedAccessException("Admin Auth required.");
             }
@@ -119,7 +148,7 @@ namespace IIASA.WorldCereal.Rdm.Services
         [HttpDelete("store/ref/collection/{collectionId}/database")]
         public async Task<IActionResult> DeleteCollectionDatabase(string collectionId)
         {
-            if (_ewocUser.IsAdmin == false)
+            if (await _accessProvider.IsAdmin() == false)
             {
                 throw new UnauthorizedAccessException("Admin Auth required.");
             }

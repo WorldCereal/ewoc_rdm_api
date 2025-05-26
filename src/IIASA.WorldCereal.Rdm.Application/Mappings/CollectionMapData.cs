@@ -11,6 +11,8 @@ namespace IIASA.WorldCereal.Rdm.Mappings
         public CollectionType Type { get; set; }
         public StoreType StoreType { get; set; }
         public AccessType AccessType { get; set; }
+        
+        public long[] EwocCodes { get; set; }
         public long FeatureCount { get; set; }
     }
 }

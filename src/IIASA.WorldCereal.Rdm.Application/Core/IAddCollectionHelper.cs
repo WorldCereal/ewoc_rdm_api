@@ -1,5 +1,7 @@
 ﻿using System.Threading.Tasks;
 using IIASA.WorldCereal.Rdm.Entity;
+using IIASA.WorldCereal.Rdm.Enums;
+using NetTopologySuite.Geometries;
 using Volo.Abp.Uow;
 
 namespace IIASA.WorldCereal.Rdm.Core
@@ -15,5 +17,7 @@ namespace IIASA.WorldCereal.Rdm.Core
         Task SaveMasterCollectionStoreInfoAsync(CollectionMetadataEntity data);
 
         Task DeleteUserDataset(string collectionId);
+
+        Task<Geometry?> GetExtentFromDb(string collectionId, StoreType storeType);
     }
 }

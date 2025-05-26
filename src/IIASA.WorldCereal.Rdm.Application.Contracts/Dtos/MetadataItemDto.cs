@@ -14,13 +14,13 @@ namespace IIASA.WorldCereal.Rdm.Dtos
     public class CodeStats
     {
         public StatsItem[] LcStats { get; set; }
-        public StatsItem[] CtStats { get; set; }
+        public StatsItem[] EwocStats { get; set; }
         public StatsItem[] IrrStats { get; set; }
     }
 
     public class StatsItem
     {
-        public int Code { get; set; }
+        public long Code { get; set; }
 
         public int Count { get; set; }
     }

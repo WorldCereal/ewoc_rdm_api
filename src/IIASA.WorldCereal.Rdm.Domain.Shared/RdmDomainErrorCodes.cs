@@ -1,7 +1,6 @@
-﻿namespace IIASA.WorldCereal.Rdm
+﻿namespace IIASA.WorldCereal.Rdm;
+
+public static class RdmDomainErrorCodes
 {
-    public static class RdmDomainErrorCodes
-    {
-        /* You can add your business exception error codes here, as constants */
-    }
+    /* You can add your business exception error codes here, as constants */
 }

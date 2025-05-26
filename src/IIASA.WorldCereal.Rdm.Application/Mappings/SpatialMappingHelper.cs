@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using IIASA.WorldCereal.Rdm.Core;
+using IIASA.WorldCereal.Rdm.Core.Vector;
 using IIASA.WorldCereal.Rdm.Dtos;
 using NetTopologySuite.Geometries;
 
@@ -33,6 +33,7 @@ namespace IIASA.WorldCereal.Rdm.Mappings
             var geometryFactory = new GeometryFactory(new PrecisionModel(), GeoJsonHelper.GeometryWgs84Srid);
             var polygon = new Polygon(new LinearRing(bbox
                 .Select(x => new Coordinate(x.Latitude, x.Longitude)).ToArray()), geometryFactory);
+            polygon.SRID = GeoJsonHelper.GeometryWgs84Srid;
             return polygon;
         }
 

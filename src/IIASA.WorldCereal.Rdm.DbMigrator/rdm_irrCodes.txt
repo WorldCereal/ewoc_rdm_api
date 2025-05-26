@@ -1,0 +1,11 @@
+0,No Information
+100,Rainfed
+200,Irrigated
+210,Fully Irrigated
+213,Fully Irrigated - surface
+214,Fully Irrigated - sprinkler
+215,Fully Irrigated - drip
+220,Supplementary irrigation
+223,Supplementary irrigation - surface
+224,Supplementary irrigation - sprinkler
+225,Supplementary irrigation - drip

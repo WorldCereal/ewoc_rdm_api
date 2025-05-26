@@ -23,7 +23,8 @@
 **/values.dev.yaml
 LICENSE
 README.md
-build-api-ewocPush.ps1
-build-dbMigrator-ewocPush.ps1
-/deployment
-/tools/MetadataFormat
+!**/.gitignore
+!.git/HEAD
+!.git/config
+!.git/packed-refs
+!.git/refs/heads/**

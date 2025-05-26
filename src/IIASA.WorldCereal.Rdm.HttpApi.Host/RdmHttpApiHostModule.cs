@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -12,324 +12,376 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using IIASA.WorldCereal.Rdm.EntityFrameworkCore;
+using IIASA.WorldCereal.Rdm.MultiTenancy;
 using IIASA.WorldCereal.Rdm.ServiceConfigs;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
-using Microsoft.AspNetCore.Routing;
-using Volo.Abp.AspNetCore.Mvc.UI.Theme.Basic;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using Volo.Abp;
 using Volo.Abp.Account;
-using Volo.Abp.Account.Web;
 using Volo.Abp.AspNetCore.Authentication.JwtBearer;
 using Volo.Abp.AspNetCore.MultiTenancy;
 using Volo.Abp.AspNetCore.Mvc;
 using Volo.Abp.AspNetCore.Mvc.AntiForgery;
-using Volo.Abp.AspNetCore.Mvc.UI.Bundling;
-using Volo.Abp.AspNetCore.Mvc.UI.Theme.Basic.Bundling;
+using Volo.Abp.AspNetCore.Mvc.UI.Theme.Basic;
 using Volo.Abp.AspNetCore.Mvc.UI.Theme.Shared;
 using Volo.Abp.AspNetCore.Serilog;
 using Volo.Abp.Autofac;
 using Volo.Abp.BackgroundJobs.Hangfire;
-using Volo.Abp.Localization;
 using Volo.Abp.Modularity;
 using Volo.Abp.Swashbuckle;
 using Volo.Abp.UI.Navigation.Urls;
 using Volo.Abp.VirtualFileSystem;
 
-namespace IIASA.WorldCereal.Rdm
+namespace IIASA.WorldCereal.Rdm;
+
+[DependsOn(
+    typeof(RdmHttpApiModule),
+    typeof(AbpAutofacModule),
+    typeof(AbpAspNetCoreMultiTenancyModule),
+    typeof(RdmApplicationModule),
+    typeof(RdmEntityFrameworkCoreModule),
+    typeof(AbpBackgroundJobsHangfireModule),
+    typeof(AbpAspNetCoreMvcUiBasicThemeModule),
+    typeof(AbpAspNetCoreAuthenticationJwtBearerModule),
+    //typeof(AbpAccountWebOpenIddictModule),
+    typeof(AbpAspNetCoreSerilogModule),
+    typeof(AbpSwashbuckleModule)
+)]
+public class RdmHttpApiHostModule : AbpModule
 {
-    [DependsOn(
-        typeof(RdmHttpApiModule),
-        typeof(AbpAutofacModule),
-        typeof(AbpAspNetCoreMultiTenancyModule),
-        typeof(RdmApplicationModule),
-        typeof(RdmEntityFrameworkCoreDbMigrationsModule),
-        typeof(AbpBackgroundJobsHangfireModule),
-        typeof(AbpAspNetCoreMvcUiBasicThemeModule),
-        typeof(AbpAspNetCoreAuthenticationJwtBearerModule),
-        typeof(AbpAccountWebIdentityServerModule),
-        typeof(AbpAspNetCoreSerilogModule),
-        typeof(AbpSwashbuckleModule)
-    )]
-    public class RdmHttpApiHostModule : AbpModule
+    private IConfiguration _configuration;
+
+    public override void PreConfigureServices(ServiceConfigurationContext context)
     {
-        private IConfiguration _configuration;
-        private const string DefaultCorsPolicyName = "Default";
-
-        public override void ConfigureServices(ServiceConfigurationContext context)
+        PreConfigure<OpenIddictBuilder>(builder =>
         {
-            _configuration = context.Services.GetConfiguration();
-            var hostingEnvironment = context.Services.GetHostingEnvironment();
-
-            ConfigureBundles();
-            ConfigureUrls(_configuration);
-            ConfigureConventionalControllers();
-            ConfigureAuthentication(context, _configuration);
-            ConfigureLocalization();
-            ConfigureVirtualFileSystem(context);
-            ConfigureCors(context, _configuration);
-            ConfigureSwaggerServices(context, _configuration);
-            ConfigureWorldCerealAppConfig(context, _configuration);
-
-            Configure<AbpAntiForgeryOptions>(options =>
+            builder.AddValidation(options =>
             {
-                options.TokenCookie.Expiration = TimeSpan.FromDays(365);
-                options.AutoValidateIgnoredHttpMethods.Remove("GET");
-                options.AutoValidateFilter =
-                    type => !type.Namespace.StartsWith("IIASA.WorldCereal.Rdm");
+                options.AddAudiences("Rdm");
+                options.UseLocalServer();
+                options.UseAspNetCore();
             });
-        }
+        });
+    }
 
-        private void ConfigureBundles()
+    public override void ConfigureServices(ServiceConfigurationContext context)
+    {
+        _configuration = context.Services.GetConfiguration();
+        var hostingEnvironment = context.Services.GetHostingEnvironment();
+
+        ConfigureAuthentication(context, _configuration);
+        ConfigureUrls(_configuration);
+        ConfigureConventionalControllers();
+        ConfigureVirtualFileSystem(context);
+        ConfigureCors(context, _configuration);
+        ConfigureSwaggerServices(context, _configuration);
+        ConfigureWorldCerealAppConfig(context, _configuration);
+        
+        context.Services.Configure<FormOptions>(options =>
         {
-            Configure<AbpBundlingOptions>(options =>
-            {
-                options.StyleBundles.Configure(
-                    BasicThemeBundles.Styles.Global,
-                    bundle => { bundle.AddFiles("/global-styles.css"); }
-                );
-            });
-        }
+            options.MultipartBodyLengthLimit = 1000 * 1024 * 1024; // 1000 MB
+        });
 
-        private void ConfigureUrls(IConfiguration configuration)
+        context.Services.AddHangfireServer();
+
+        var azureConfig = new AzureConfig();
+        _configuration.GetSection("AzureConfig").Bind(azureConfig);
+        context.Services.AddSingleton(azureConfig);
+
+        Configure<AbpAntiForgeryOptions>(options =>
         {
-            Configure<AppUrlOptions>(options =>
+            options.TokenCookie.Expiration = TimeSpan.FromDays(365);
+            options.AutoValidateIgnoredHttpMethods.Remove("GET");
+            options.AutoValidateFilter =
+                type => !type.Namespace!.StartsWith("IIASA.WorldCereal.Rdm");
+        });
+    }
+
+    private void ConfigureAuthentication(ServiceConfigurationContext context, IConfiguration configuration)
+    {
+        context.Services
+            .AddAuthentication(options =>
             {
-                options.Applications["MVC"].RootUrl = configuration["App:SelfUrl"];
-                options.RedirectAllowedUrls.AddRange(configuration["App:RedirectAllowedUrls"].Split(','));
-
-                options.Applications["Angular"].RootUrl = configuration["App:ClientUrl"];
-                options.Applications["Angular"].Urls[AccountUrlNames.PasswordReset] = "account/reset-password";
-            });
-        }
-
-        private void ConfigureWorldCerealAppConfig(ServiceConfigurationContext context, IConfiguration configuration)
-        {
-            var connectionString = configuration.GetConnectionString("Default");
-            context.Services.AddHangfire(config =>
+                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                //options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+            })
+            .AddJwtBearer(options =>
             {
-                config.UseStorage(new PostgreSqlStorage(connectionString,
-                    new PostgreSqlStorageOptions {InvisibilityTimeout = TimeSpan.FromDays(1)}));
-            });
-
-            var apiConfig = new CollectionApiConfig();
-            configuration.GetSection("CollectionApiConfig").Bind(apiConfig);
-            context.Services.AddSingleton(apiConfig);
-
-            var userDatasetConfig = new UserDatasetConfig();
-            configuration.GetSection("UserDatasetConfig").Bind(userDatasetConfig);
-            context.Services.AddSingleton(userDatasetConfig);
-            
-            var ewocConfig = new EwocConfig();
-            configuration.GetSection("EwocConfig").Bind(ewocConfig);
-            context.Services.AddSingleton(ewocConfig);
-        }
-
-        private void ConfigureVirtualFileSystem(ServiceConfigurationContext context)
-        {
-            var hostingEnvironment = context.Services.GetHostingEnvironment();
-
-            if (hostingEnvironment.IsDevelopment())
-            {
-                Configure<AbpVirtualFileSystemOptions>(options =>
+                options.SaveToken = true;
+                options.UseSecurityTokenValidators = true;
+                options.TokenValidationParameters.ValidateIssuer = false;
+                options.TokenValidationParameters.ValidateIssuerSigningKey = false;
+                options.TokenValidationParameters.SignatureValidator =
+                    (token, _) => new JwtSecurityToken(token);
+                options.Authority = configuration["AuthServer:Authority"];
+                options.RequireHttpsMetadata = Convert.ToBoolean(configuration["AuthServer:RequireHttpsMetadata"]);
+                options.Audience = "account";
+                options.BackchannelHttpHandler = new HttpClientHandler
                 {
-                    options.FileSets.ReplaceEmbeddedByPhysical<RdmDomainSharedModule>(
-                        Path.Combine(hostingEnvironment.ContentRootPath,
-                            $"..{Path.DirectorySeparatorChar}IIASA.WorldCereal.Rdm.Domain.Shared"));
-                    options.FileSets.ReplaceEmbeddedByPhysical<RdmDomainModule>(
-                        Path.Combine(hostingEnvironment.ContentRootPath,
-                            $"..{Path.DirectorySeparatorChar}IIASA.WorldCereal.Rdm.Domain"));
-                    options.FileSets.ReplaceEmbeddedByPhysical<RdmApplicationContractsModule>(
-                        Path.Combine(hostingEnvironment.ContentRootPath,
-                            $"..{Path.DirectorySeparatorChar}IIASA.WorldCereal.Rdm.Application.Contracts"));
-                    options.FileSets.ReplaceEmbeddedByPhysical<RdmApplicationModule>(
-                        Path.Combine(hostingEnvironment.ContentRootPath,
-                            $"..{Path.DirectorySeparatorChar}IIASA.WorldCereal.Rdm.Application"));
-                });
-            }
-        }
-
-        private void ConfigureConventionalControllers()
-        {
-            Configure<RouteOptions>(opt =>
-            {
-                opt.LowercaseUrls = true;
-                opt.LowercaseQueryStrings = true;
+                    ServerCertificateCustomValidationCallback =
+                        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+                };
             });
+        var multiSchemePolicy = new AuthorizationPolicyBuilder(
+                JwtBearerDefaults.AuthenticationScheme)
+            .RequireAuthenticatedUser()
+            .Build();
 
-            Configure<AbpAspNetCoreMvcOptions>(options =>
-            {
-                options.ConventionalControllers.Create(typeof(RdmApplicationModule).Assembly);
-            });
-        }
+        context.Services.AddAuthorization(o => o.DefaultPolicy = multiSchemePolicy);
+    }
 
-        private void ConfigureAuthentication(ServiceConfigurationContext context, IConfiguration configuration)
+    private void ConfigureUrls(IConfiguration configuration)
+    {
+        Configure<AppUrlOptions>(options =>
         {
-            context.Services.AddAuthentication()
-                .AddJwtBearer(options =>
-                {
-                    options.Authority = configuration["AuthServer:Authority"];
-                    options.RequireHttpsMetadata = Convert.ToBoolean(configuration["AuthServer:RequireHttpsMetadata"]);
-                    options.Audience = "Rdm";
-                    options.BackchannelHttpHandler = new HttpClientHandler
-                    {
-                        ServerCertificateCustomValidationCallback =
-                            HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-                    };
-                });
-        }
+            options.Applications["MVC"].RootUrl = configuration["App:SelfUrl"];
+            options.RedirectAllowedUrls.AddRange(configuration["App:RedirectAllowedUrls"]?.Split(',') ??
+                                                 Array.Empty<string>());
 
-        private static void ConfigureSwaggerServices(ServiceConfigurationContext context, IConfiguration configuration)
+            options.Applications["Angular"].RootUrl = configuration["App:ClientUrl"];
+            options.Applications["Angular"].Urls[AccountUrlNames.PasswordReset] = "account/reset-password";
+        });
+    }
+
+    private void ConfigureVirtualFileSystem(ServiceConfigurationContext context)
+    {
+        var hostingEnvironment = context.Services.GetHostingEnvironment();
+
+        if (hostingEnvironment.IsDevelopment())
         {
-            context.Services.AddSwaggerGen(
-                options =>
-                {
-                    options.SwaggerDoc("OGC", new OpenApiInfo {Title = "WorldCereal OGC Data APIs", Version = "v1"});
-                    options.SwaggerDoc("v1", new OpenApiInfo {Title = "WorldCereal Application APIs", Version = "v1"});
-                    options.DocInclusionPredicate((docName, description) =>
-                    {
-                        return SelectActions(docName, description);
-                    });
-                    AddXml("IIASA.WorldCereal.Rdm.Application.Contracts.xml", options);
-                    AddXml("IIASA.WorldCereal.Rdm.Application.xml", options);
-                    //options.OperationFilter<AddRequiredHeaderParameter>();
-                });
-        }
-
-        private static bool SelectActions(string docName, ApiDescription description)
-        {
-            var ogc = "OGC";
-            if (docName != ogc)
+            Configure<AbpVirtualFileSystemOptions>(options =>
             {
-                if (description.GroupName == ogc)
-                {
-                    return false;
-                }
-
-                return true;
-            }
-
-            if (docName == description.GroupName)
-            {
-                return true;
-            }
-
-            // apply your swagger filters here, eg "OGC" = controllers decorated with
-            return false;
-        }
-
-        private static void AddXml(string assemblyName, SwaggerGenOptions options)
-        {
-            var filePath = $"{AppContext.BaseDirectory}{Path.DirectorySeparatorChar}{assemblyName}";
-            options.IncludeXmlComments(filePath);
-        }
-
-        private void ConfigureLocalization()
-        {
-            Configure<AbpLocalizationOptions>(options =>
-            {
-                options.Languages.Add(new LanguageInfo("ar", "ar", "العربية"));
-                options.Languages.Add(new LanguageInfo("cs", "cs", "Čeština"));
-                options.Languages.Add(new LanguageInfo("en", "en", "English"));
-                options.Languages.Add(new LanguageInfo("en-GB", "en-GB", "English (UK)"));
-                options.Languages.Add(new LanguageInfo("fr", "fr", "Français"));
-                options.Languages.Add(new LanguageInfo("hu", "hu", "Magyar"));
-                options.Languages.Add(new LanguageInfo("pt-BR", "pt-BR", "Português"));
-                options.Languages.Add(new LanguageInfo("ru", "ru", "Русский"));
-                options.Languages.Add(new LanguageInfo("tr", "tr", "Türkçe"));
-                options.Languages.Add(new LanguageInfo("zh-Hans", "zh-Hans", "简体中文"));
-                options.Languages.Add(new LanguageInfo("zh-Hant", "zh-Hant", "繁體中文"));
-                options.Languages.Add(new LanguageInfo("de-DE", "de-DE", "Deutsch", "de"));
-                options.Languages.Add(new LanguageInfo("es", "es", "Español", "es"));
-            });
-        }
-
-        private void ConfigureCors(ServiceConfigurationContext context, IConfiguration configuration)
-        {
-            context.Services.AddCors(options =>
-            {
-                options.AddPolicy(DefaultCorsPolicyName, builder =>
-                {
-                    builder
-                        .WithOrigins(
-                            configuration["App:CorsOrigins"]
-                                .Split(",", StringSplitOptions.RemoveEmptyEntries)
-                                .Select(o => o.RemovePostFix("/"))
-                                .ToArray()
-                        )
-                        .WithAbpExposedHeaders()
-                        .SetIsOriginAllowedToAllowWildcardSubdomains()
-                        .AllowAnyHeader()
-                        .AllowAnyMethod()
-                        .AllowCredentials();
-                });
-            });
-        }
-
-        public override void OnApplicationInitialization(ApplicationInitializationContext context)
-        {
-            var app = context.GetApplicationBuilder();
-            var env = context.GetEnvironment();
-
-            if (env.IsDevelopment())
-            {
-                app.UseDeveloperExceptionPage();
-            }
-
-            app.UseAbpRequestLocalization();
-
-            if (!env.IsDevelopment())
-            {
-                app.UseErrorPage();
-            }
-
-            app.UseCorrelationId();
-            app.UseStaticFiles();
-            app.UseRouting();
-            app.UseCors(DefaultCorsPolicyName);
-
-            app.UseMultiTenancy();
-
-            app.UseUnitOfWork();
-
-            ConfigureSwaggerInApp(app);
-
-            app.UseAuditing();
-            app.UseAbpSerilogEnrichers();
-            app.UseConfiguredEndpoints();
-
-            var backgroundJobServerOptions = new BackgroundJobServerOptions();
-            app.UseHangfireServer(backgroundJobServerOptions);
-            app.UseHangfireDashboard(pathMatch: "/jobs",
-                new DashboardOptions
-                {
-                    DisplayStorageConnectionString = true,
-                    Authorization = new[] {new JobDashboardAuthorizationFilter()}
-                });
-        }
-
-        private void ConfigureSwaggerInApp(IApplicationBuilder app)
-        {
-            var jobUrl = $"{_configuration["App:SelfUrl"]}/jobs";
-
-            app.UseSwagger();
-            app.UseSwaggerUI(options =>
-            {
-                options.SwaggerEndpoint("/swagger/OGC/swagger.json", "WorldCereal OGC Data API");
-                options.SwaggerEndpoint("/swagger/v1/swagger.json", "WorldCereal Application APIs");
-                options.HeadContent =
-                    $"<h4><a href=\"{jobUrl}\" target=\"_blank\">Check Jobs Here</a></h4>";
+                options.FileSets.ReplaceEmbeddedByPhysical<RdmDomainSharedModule>(
+                    Path.Combine(hostingEnvironment.ContentRootPath,
+                        $"..{Path.DirectorySeparatorChar}IIASA.WorldCereal.Rdm.Domain.Shared"));
+                options.FileSets.ReplaceEmbeddedByPhysical<RdmDomainModule>(
+                    Path.Combine(hostingEnvironment.ContentRootPath,
+                        $"..{Path.DirectorySeparatorChar}IIASA.WorldCereal.Rdm.Domain"));
+                options.FileSets.ReplaceEmbeddedByPhysical<RdmApplicationContractsModule>(
+                    Path.Combine(hostingEnvironment.ContentRootPath,
+                        $"..{Path.DirectorySeparatorChar}IIASA.WorldCereal.Rdm.Application.Contracts"));
+                options.FileSets.ReplaceEmbeddedByPhysical<RdmApplicationModule>(
+                    Path.Combine(hostingEnvironment.ContentRootPath,
+                        $"..{Path.DirectorySeparatorChar}IIASA.WorldCereal.Rdm.Application"));
             });
         }
     }
 
-    public class JobDashboardAuthorizationFilter : IDashboardAuthorizationFilter
+    private void ConfigureWorldCerealAppConfig(ServiceConfigurationContext context, IConfiguration configuration)
     {
-        public bool Authorize(DashboardContext context)
+        var connectionString = configuration.GetConnectionString("Default");
+        context.Services.AddHangfire(config =>
         {
-            // need to change this if hangfire url exposed public
+            config.UseStorage(new PostgreSqlStorage(connectionString,
+                new PostgreSqlStorageOptions { InvisibilityTimeout = TimeSpan.FromDays(1) }));
+        });
+
+        var apiConfig = new CollectionApiConfig();
+        configuration.GetSection("CollectionApiConfig").Bind(apiConfig);
+        context.Services.AddSingleton(apiConfig);
+
+        var userDatasetConfig = new UserDatasetConfig();
+        configuration.GetSection("UserDatasetConfig").Bind(userDatasetConfig);
+        context.Services.AddSingleton(userDatasetConfig);
+
+        var ewocConfig = new EwocConfig();
+        configuration.GetSection("EwocConfig").Bind(ewocConfig);
+        context.Services.AddSingleton(ewocConfig);
+    }
+
+    private void ConfigureConventionalControllers()
+    {
+        Configure<AbpAspNetCoreMvcOptions>(options =>
+        {
+            options.ConventionalControllers.Create(typeof(RdmApplicationModule).Assembly);
+        });
+    }
+
+    private static void ConfigureSwaggerServices(ServiceConfigurationContext context, IConfiguration configuration)
+    {
+        /*context.Services.AddAbpSwaggerGenWithOAuth(
+            configuration["AuthServer:Authority"]!,
+            new Dictionary<string, string>
+            {
+                    {"Rdm", "Rdm API"}
+            },
+            options =>
+            {
+                options.SwaggerDoc("v1", new OpenApiInfo { Title = "Rdm API", Version = "v1" });
+                options.DocInclusionPredicate((docName, description) => true);
+                options.CustomSchemaIds(type => type.FullName);
+            });*/
+
+
+        context.Services.AddSwaggerGen(
+            options =>
+            {
+                // Include 'SecurityScheme' to use JWT Authentication
+                var jwtSecurityScheme = new OpenApiSecurityScheme
+                {
+                    BearerFormat = "JWT",
+                    Name = "JWT Authentication",
+                    In = ParameterLocation.Header,
+                    Type = SecuritySchemeType.Http,
+                    Scheme = JwtBearerDefaults.AuthenticationScheme,
+                    Description =
+                        "Put **_ONLY_** your JWT Bearer token below. 'Bearer' text will be appended automatically",
+
+                    Reference = new OpenApiReference
+                    {
+                        Id = JwtBearerDefaults.AuthenticationScheme,
+                        Type = ReferenceType.SecurityScheme
+                    }
+                };
+                options.AddSecurityDefinition(jwtSecurityScheme.Reference.Id, jwtSecurityScheme);
+
+                options.AddSecurityRequirement(new OpenApiSecurityRequirement
+                {
+                    { jwtSecurityScheme, Array.Empty<string>() }
+                });
+                options.SwaggerDoc("OGC", new OpenApiInfo { Title = "WorldCereal OGC Data APIs", Version = "v1", Description = "<p>Explore and download harmonized reference data <a href='https://github.com/WorldCereal/worldcereal-classification/blob/main/notebooks/worldcereal_RDM_demo.ipynb'> Python Notebook </a></p>"});
+                options.SwaggerDoc("v1", new OpenApiInfo { Title = "WorldCereal Application APIs", Version = "v1" });
+                options.DocInclusionPredicate((docName, description) =>
+                {
+                    return SelectActions(docName, description);
+                });
+                AddXml("IIASA.WorldCereal.Rdm.Application.Contracts.xml", options);
+                AddXml("IIASA.WorldCereal.Rdm.Application.xml", options);
+                //options.OperationFilter<AddRequiredHeaderParameter>();
+            });
+    }
+
+    private static bool SelectActions(string docName, ApiDescription description)
+    {
+        var ogc = "OGC";
+        if (docName != ogc)
+        {
+            if (description.GroupName == ogc)
+            {
+                return false;
+            }
+
             return true;
         }
+
+        if (docName == description.GroupName)
+        {
+            return true;
+        }
+
+        // apply your swagger filters here, eg "OGC" = controllers decorated with
+        return false;
+    }
+
+    private static void AddXml(string assemblyName, SwaggerGenOptions options)
+    {
+        var filePath = $"{AppContext.BaseDirectory}{Path.DirectorySeparatorChar}{assemblyName}";
+        options.IncludeXmlComments(filePath);
+    }
+
+    private void ConfigureCors(ServiceConfigurationContext context, IConfiguration configuration)
+    {
+        context.Services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(builder =>
+            {
+                builder
+                    .WithOrigins(configuration["App:CorsOrigins"]?
+                        .Split(",", StringSplitOptions.RemoveEmptyEntries)
+                        .Select(o => o.RemovePostFix("/"))
+                        .ToArray() ?? Array.Empty<string>())
+                    .WithAbpExposedHeaders()
+                    .SetIsOriginAllowedToAllowWildcardSubdomains()
+                    .AllowAnyHeader()
+                    .AllowAnyMethod()
+                    .AllowCredentials();
+            });
+        });
+    }
+
+    public override void OnApplicationInitialization(ApplicationInitializationContext context)
+    {
+        var app = context.GetApplicationBuilder();
+        var env = context.GetEnvironment();
+
+        if (env.IsDevelopment())
+        {
+            app.UseDeveloperExceptionPage();
+        }
+
+        app.UseAbpRequestLocalization();
+
+        if (!env.IsDevelopment())
+        {
+            app.UseErrorPage();
+        }
+
+        app.UseCorrelationId();
+        app.UseStaticFiles();
+        app.UseRouting();
+        app.UseCors();
+        app.UseAuthentication();
+        //app.UseAbpOpenIddictValidation();
+
+        if (MultiTenancyConsts.IsEnabled)
+        {
+            app.UseMultiTenancy();
+        }
+
+        app.UseUnitOfWork();
+        app.UseDynamicClaims();
+        app.UseAuthorization();
+
+        app.UseSwagger();
+        /*app.UseAbpSwaggerUI(c =>
+        {
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "Rdm API");
+
+            var configuration = context.ServiceProvider.GetRequiredService<IConfiguration>();
+            c.OAuthClientId(configuration["AuthServer:SwaggerClientId"]);
+            c.OAuthScopes("Rdm");
+        });*/
+
+        ConfigureSwaggerInApp(app);
+        app.UseAuditing();
+        app.UseAbpSerilogEnrichers();
+        app.UseConfiguredEndpoints();
+
+        /*var backgroundJobServerOptions = new BackgroundJobServerOptions();
+        app.UseHangfireServer(backgroundJobServerOptions);*/
+        app.UseHangfireDashboard(pathMatch: "/jobs",
+            new DashboardOptions
+            {
+                DisplayStorageConnectionString = true,
+                Authorization = new[] { new JobDashboardAuthorizationFilter() }
+            });
+    }
+
+    private void ConfigureSwaggerInApp(IApplicationBuilder app)
+    {
+        var jobUrl = $"{_configuration["App:SelfUrl"]}/jobs";
+
+        app.UseSwagger();
+        app.UseSwaggerUI(options =>
+        {
+            options.SwaggerEndpoint("/swagger/OGC/swagger.json", "WorldCereal OGC Data API");
+            options.SwaggerEndpoint("/swagger/v1/swagger.json", "WorldCereal Application APIs");
+            options.HeadContent =
+                $"<h4><a href=\"{jobUrl}\" target=\"_blank\">Check Jobs Here</a></h4>";
+        });
+    }
+}
+
+public class JobDashboardAuthorizationFilter : IDashboardAuthorizationFilter
+{
+    public bool Authorize(DashboardContext context)
+    {
+        // need to change this if hangfire url exposed public
+        return true;
     }
 }

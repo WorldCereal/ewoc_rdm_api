@@ -9,7 +9,7 @@ namespace IIASA.WorldCereal.Rdm.Jobs.Validation
         private readonly DateTime _validStartDate = new(2017, 1, 1);
         private readonly DateTime _currentDate = DateTime.UtcNow;
         public ValueCheckType ValueCheckType { get; set; } = ValueCheckType.Date;
-        
+
         public bool IsValid(object value)
         {
             try
@@ -19,8 +19,16 @@ namespace IIASA.WorldCereal.Rdm.Jobs.Validation
                     return IsValidDate(date);
                 }
 
+                if (value is long longObj)
+                {
+                    var dateTimeOffset = DateTimeOffset.FromFileTime(longObj);
+                    return IsValidDate(dateTimeOffset.DateTime);
+                }
+
+                char[] separators = ['T', ' '];
                 var stringValue = value.ToString();
-                var parsedValue = DateTime.ParseExact(stringValue, "yyyy-M-d", CultureInfo.InvariantCulture);
+                var parsedValue =
+                    DateTime.ParseExact(stringValue.Split(separators)[0], "yyyy-M-d", CultureInfo.InvariantCulture);
                 return IsValidDate(parsedValue);
             }
             catch (Exception)

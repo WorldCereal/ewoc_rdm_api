@@ -7,7 +7,15 @@ namespace IIASA.WorldCereal.Rdm.Enums
     {
         None, // Not mandatory
         OnlyForPolygon, // attribute mandatory only for polygon dataset
-        OnlyForPoint,
+        OnlyForPoint, // attribute mandatory only for point dataset
         PointAndPolygon,// attribute mandatory for both polygon and point dataset
+    }
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public enum CodeType
+    {
+        LandCoverType,
+        CropType,
+        IrrigationType
     }
 }

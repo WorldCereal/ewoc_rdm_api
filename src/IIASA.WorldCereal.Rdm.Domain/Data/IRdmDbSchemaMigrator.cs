@@ -1,9 +1,8 @@
 ﻿using System.Threading.Tasks;
 
-namespace IIASA.WorldCereal.Rdm.Data
+namespace IIASA.WorldCereal.Rdm.Data;
+
+public interface IRdmDbSchemaMigrator
 {
-    public interface IRdmDbSchemaMigrator
-    {
-        Task MigrateAsync();
-    }
+    Task MigrateAsync();
 }

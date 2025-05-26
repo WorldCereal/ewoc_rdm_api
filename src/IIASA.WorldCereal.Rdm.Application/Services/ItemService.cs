@@ -4,9 +4,11 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using IIASA.WorldCereal.Rdm.Core;
+using IIASA.WorldCereal.Rdm.Core.Vector;
 using IIASA.WorldCereal.Rdm.Dtos;
 using IIASA.WorldCereal.Rdm.Dtos.GeoJson;
 using IIASA.WorldCereal.Rdm.Entity;
+using IIASA.WorldCereal.Rdm.Enums;
 using IIASA.WorldCereal.Rdm.ServiceConfigs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -28,23 +30,28 @@ namespace IIASA.WorldCereal.Rdm.Services
         private readonly ITenantRepository _tenantRepository;
         private readonly IItemsCodeStatsHelper _itemsCodeStatsHelper;
         private readonly IRepository<ItemEntity, long> _itemRepository;
+        private readonly IRepository<CollectionMetadataEntity, Guid> _collectionMetadataRepository;
         private readonly IGeoJsonHelper _geoJsonHelper;
         private readonly ICurrentTenant _currentTenant;
-        private readonly IEwocUser _ewocUser;
         private readonly UserDatasetConfig _userDatasetConfig;
+        private IAccessProvider _accessProvider;
+        private readonly IRepository<UserDataset, Guid> _userDatasetRepository;
 
         public ItemService(ITenantRepository tenantRepository, IItemsCodeStatsHelper itemsCodeStatsHelper,
             IRepository<ItemEntity, long> itemRepository,
-            IGeoJsonHelper geoJsonHelper, ICurrentTenant currentTenant,
-            IEwocUser ewocUser,
+            IRepository<CollectionMetadataEntity, Guid> collectionMetadataRepository,
+            IGeoJsonHelper geoJsonHelper, ICurrentTenant currentTenant, IAccessProvider accessProvider,
+            IRepository<UserDataset, Guid> userDatasetRepository,
             UserDatasetConfig userDatasetConfig)
         {
+            _accessProvider = accessProvider;
+            _userDatasetRepository = userDatasetRepository;
             _tenantRepository = tenantRepository;
             _itemsCodeStatsHelper = itemsCodeStatsHelper;
             _itemRepository = itemRepository;
+            _collectionMetadataRepository = collectionMetadataRepository;
             _geoJsonHelper = geoJsonHelper;
             _currentTenant = currentTenant;
-            _ewocUser = ewocUser;
             _userDatasetConfig = userDatasetConfig;
         }
 
@@ -66,7 +73,8 @@ namespace IIASA.WorldCereal.Rdm.Services
         [SwaggerResponse(StatusCodes.Status500InternalServerError, "A server error occurred.")]
         public async Task<IActionResult> GetFeature(string collectionId, string featureId)
         {
-            var tenant = await GetTenant(collectionId);
+            var collectionMetadataEntity = await GetCollection(collectionId);
+            var tenant = await GetTenant(collectionMetadataEntity.CollectionId);
             using (CurrentTenant.Change(tenant.Id))
             {
                 var item = await _itemRepository.GetAsync(x => x.SampleId == featureId);
@@ -98,10 +106,11 @@ namespace IIASA.WorldCereal.Rdm.Services
         [SwaggerResponse(StatusCodes.Status500InternalServerError, "A server error occurred.")]
         public async Task<IActionResult> GetFeatures(string collectionId, ItemsRequestFilter itemsRequestFilter)
         {
-            var tenant = await GetTenant(collectionId);
+            var collectionMetadataEntity = await GetCollection(collectionId);
+            var tenant = await GetTenant(collectionMetadataEntity.CollectionId);
             using (CurrentTenant.Change(tenant.Id))
             {
-                var query = SearchHelper.GetItemEntitiesQuery(itemsRequestFilter, _itemRepository);
+                var query = await SearchHelper.GetItemEntitiesQuery(itemsRequestFilter, _itemRepository);
                 var items = await GetFilteredItems(itemsRequestFilter);
                 if (items.Any() == false)
                 {
@@ -109,7 +118,8 @@ namespace IIASA.WorldCereal.Rdm.Services
                 }
 
                 var jObject = await GetJObject(itemsRequestFilter, items, query);
-                return GeoJsonHttpHelper.GetContentResult(jObject);
+                var features = GeoJsonHttpHelper.GetContentResult(jObject);
+                return features;
             }
         }
 
@@ -117,18 +127,22 @@ namespace IIASA.WorldCereal.Rdm.Services
         public async Task<IActionResult> DownloadCollection(string collectionId,
             DownloadDatasetRequest pagedResultRequestDto)
         {
-            if (_ewocUser.IsAdmin == false)
+            if (await _accessProvider.IsAdmin() == false)
             {
                 return new UnauthorizedObjectResult("Admin Auth required.");
             }
 
-            var tenant = await _tenantRepository.FindByNameAsync(collectionId);
+            var collectionMetadataEntity = await GetCollection(collectionId);
+            var tenant = await GetTenant(collectionMetadataEntity.CollectionId);
             var tempPath = Path.Combine(_userDatasetConfig.TempFolder, Guid.NewGuid().ToString("N"));
+
             using (_currentTenant.Change(tenant.Id))
             {
-                var items = await _itemRepository.OrderBy(x => x.Id).Skip(pagedResultRequestDto.SkipCount)
+                var bbox = (await _collectionMetadataRepository.FirstAsync()).Extent.Coordinates;
+                var items = await (await _itemRepository.GetQueryableAsync()).OrderBy(x => x.Id)
+                    .Skip(pagedResultRequestDto.SkipCount)
                     .Take(pagedResultRequestDto.MaxResultCount).ToListAsync();
-                GeoJsonHelper.WriteDataset(items, tempPath, collectionId);
+                await GeoParquetWriter.WriteDataset(items, tempPath, collectionId, bbox, false);
             }
 
             await using (var stream = new MemoryStream())
@@ -137,14 +151,16 @@ namespace IIASA.WorldCereal.Rdm.Services
                 stream.Position = 0;
                 Directory.Delete(tempPath, true);
                 return new FileContentResult(await stream.GetAllBytesAsync(),
-                    "application/octet-stream") {FileDownloadName = $"{collectionId}.zip"};
+                    "application/octet-stream") { FileDownloadName = $"{collectionId}.zip" };
             }
         }
 
         [HttpGet("collections/{collectionId}/items/codestats")]
         public async Task<CodeStats> GetCodeListStats(string collectionId)
         {
-            var tenant = await GetTenant(collectionId);
+            var collectionMetadataEntity =
+                await _collectionMetadataRepository.FirstAsync(x => x.CollectionId == collectionId);
+            var tenant = await GetTenant(collectionMetadataEntity.CollectionId);
             using (CurrentTenant.Change(tenant.Id))
             {
                 return await _itemsCodeStatsHelper.GetCodeStats(collectionId, tenant.Id);
@@ -166,14 +182,39 @@ namespace IIASA.WorldCereal.Rdm.Services
 
         private async Task<List<ItemEntity>> GetFilteredItems(ItemsRequestFilter filter)
         {
-            var query = SearchHelper.GetItemEntitiesQuery(filter, _itemRepository);
+            var query = await SearchHelper.GetItemEntitiesQuery(filter, _itemRepository);
 
-            return await _itemRepository.Where(x =>
+            return await (await _itemRepository.GetQueryableAsync()).Where(x =>
                 query.OrderBy(o => o.Id).Skip(filter.SkipCount).Take(filter.MaxResultCount)
                     .Select(i => i.Id)
                     .Contains(x.Id)).AsNoTracking().ToListAsync();
         }
 
+        private async Task<CollectionMetadataEntity> GetCollection(string collectionId)
+        {
+            var communityAllowedAccess = await _accessProvider.GetCommunityAllowedAccess();
+            var consortiumAllowedAccess = await _accessProvider.GetConsortiumAllowedAccess();
+            var userCols = await GetUserDatasets();
+            var col = await _collectionMetadataRepository.FirstAsync(x =>
+                ((x.StoreType == StoreType.Community && communityAllowedAccess.Contains(x.AccessType)) ||
+                 (x.StoreType == StoreType.Reference &&
+                  consortiumAllowedAccess.Contains(x.AccessType)) || userCols.Contains(x.CollectionId)) &&
+                x.CollectionId == collectionId);
+            return col;
+        }
+
+        private async Task<string[]> GetUserDatasets()
+        {
+            var userCol = Array.Empty<string>();
+            if (_accessProvider.IsLoggedIn())
+            {
+                var userId = await _accessProvider.UserId();
+                userCol = await (await _userDatasetRepository.GetQueryableAsync()).Where(x => x.CreatorId == userId)
+                    .Select(x => x.CollectionId).ToArrayAsync();
+            }
+
+            return userCol;
+        }
 
         private async Task<Tenant> GetTenant(string collectionId)
         {

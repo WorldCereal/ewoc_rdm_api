@@ -5,6 +5,13 @@ namespace IIASA.WorldCereal.Rdm.Enums
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum UserDatasetState
     {
+        UploadedColumnExtractionInProgressWait,
+        UploadedColumnExtracted,
+        UploadedColumnExtractFailed,
+        MappingInProgressWait,
+        ColumnMappingExtracted,
+        ColumnMappingExtractFailed,
+        UploadedHarmonisationInProgressWait,
         UploadedValidationInProgressWait,
         ValidationSuccessfulProvisionInProgressWait,
         ValidationFailedUploadRequired,
@@ -13,6 +20,8 @@ namespace IIASA.WorldCereal.Rdm.Enums
         AvailableInModule,
 		ItemsUpdateInprogress,
         ItemsUpdateFailed,
+        PrivateSharedWithConsortium,
+        PrivateSharedWithConsortiumVerified,
 		PublicDataset
     }
 }

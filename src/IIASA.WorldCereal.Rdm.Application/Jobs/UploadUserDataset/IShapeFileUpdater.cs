@@ -1,5 +1,5 @@
 ﻿using System.Collections.Generic;
-using IIASA.WorldCereal.Rdm.Core;
+using IIASA.WorldCereal.Rdm.Core.Vector;
 using IIASA.WorldCereal.Rdm.Entity;
 using NetTopologySuite.IO;
 

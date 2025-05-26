@@ -10,6 +10,14 @@
         public string TempFolder { get; set; }
 
         public string DatasetBackupFolder { get; set; }
+
+        public string AiServiceBaseUrl { get; set; }
+
+        public string RdmEmail { get; set; }
+
+        public string MailjetAPIKey { get; set; }
+
+        public string MailjetAPISecret { get; set; }
     }
 
     public class EwocConfig

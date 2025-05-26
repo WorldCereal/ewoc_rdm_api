@@ -6,6 +6,7 @@ using IIASA.WorldCereal.Rdm.Core;
 using IIASA.WorldCereal.Rdm.Dtos;
 using IIASA.WorldCereal.Rdm.Dtos.GeoJson;
 using IIASA.WorldCereal.Rdm.Entity;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Volo.Abp;
 using Volo.Abp.Domain.Repositories;
@@ -16,27 +17,28 @@ namespace IIASA.WorldCereal.Rdm.Services
 {
     [RemoteService(Name = "OGC")]
     [ApiExplorerSettings(GroupName = "OGC")]
+    [Authorize]
     public class MasterCollectionStoreService : RdmAppService
     {
         private readonly IRepository<CollectionMetadataEntity, Guid> _masterCollectionRepository;
         private readonly IRepository<ItemEntity, long> _itemRepository;
         private readonly IRepository<CollectionMetadataEntity, Guid> _collectionRepository;
-        private readonly IEwocUser _ewocUser;
         private readonly ICurrentTenant _currentTenant;
         private readonly ITenantRepository _tenantRepository;
         private readonly IGeoJsonHelper _geoJsonHelper;
         private readonly IAddCollectionHelper _addCollectionHelper;
+        private IAccessProvider _accessProvider;
 
         public MasterCollectionStoreService(IRepository<CollectionMetadataEntity, Guid> masterCollectionRepository,
             IRepository<ItemEntity, long> itemRepository,
-            IRepository<CollectionMetadataEntity, Guid> collectionRepository, IEwocUser ewocUser,
+            IRepository<CollectionMetadataEntity, Guid> collectionRepository, IAccessProvider accessProvider,
             ICurrentTenant currentTenant, ITenantRepository tenantRepository, IGeoJsonHelper geoJsonHelper,
             IAddCollectionHelper addCollectionHelper)
         {
+            _accessProvider = accessProvider;
             _masterCollectionRepository = masterCollectionRepository;
             _itemRepository = itemRepository;
             _collectionRepository = collectionRepository;
-            _ewocUser = ewocUser;
             _currentTenant = currentTenant;
             _tenantRepository = tenantRepository;
             _geoJsonHelper = geoJsonHelper;
@@ -46,7 +48,7 @@ namespace IIASA.WorldCereal.Rdm.Services
         [HttpGet("reference/db/collections")]
         public async Task<IEnumerable<MasterCollectionStoreInfoDto>> Get()
         {
-            if (_ewocUser.IsAdmin == false)
+            if (await _accessProvider.IsAdmin() == false)
             {
                 throw new UnauthorizedAccessException("Admin Auth required.");
             }
@@ -63,7 +65,7 @@ namespace IIASA.WorldCereal.Rdm.Services
         [HttpPost("reference/db/collections")]
         public async Task<MasterCollectionStoreInfoDto> Create(AddMasterCollectionStoreInfoDto addMasterCollectionStore)
         {
-            if (_ewocUser.IsAdmin == false)
+            if (await _accessProvider.IsAdmin() == false)
             {
                 throw new UnauthorizedAccessException("Admin Auth required.");
             }
@@ -88,10 +90,11 @@ namespace IIASA.WorldCereal.Rdm.Services
             return ObjectMapper.Map<CollectionMetadataEntity, MasterCollectionStoreInfoDto>(collectionStoreInfo);
         }
 
+        /*
         [HttpPut("reference/db/collections/{collectionId}/items")]
         public async Task AddItems(string collectionId, [FromBody] FeatureCollectionGeoJSON featureCollection)
         {
-            if (_ewocUser.IsAdmin == false)
+            if (await _accessProvider.IsAdmin() == false)
             {
                 throw new UnauthorizedAccessException("Admin Auth required.");
             }
@@ -104,6 +107,6 @@ namespace IIASA.WorldCereal.Rdm.Services
             {
                 await _itemRepository.InsertManyAsync(items);
             }
-        }
+        }*/
     }
 }

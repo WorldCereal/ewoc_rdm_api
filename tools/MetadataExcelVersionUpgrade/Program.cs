@@ -1,11 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using CsvHelper;
-using CsvHelper.Configuration;
 using IIASA.WorldCereal.Rdm.ExcelOps;
 using NPOI.SS.UserModel;
 using NPOI.XSSF.UserModel;
@@ -19,7 +16,6 @@ namespace MetadataExcelVersionUpgrade
             Console.WriteLine("Welcome to Metadata version Upgrade (MetaData_version_1_1.xlsx)");
             Console.WriteLine("1. Upgrade metadata excels");
             Console.WriteLine("2. Generate confidence csv from metadata excel.");
-            Console.WriteLine("3. Map codes.");
             var read = Console.ReadLine();
             switch (read)
             {
@@ -29,114 +25,12 @@ namespace MetadataExcelVersionUpgrade
                 case "2":
                     GenerateConfCsv();
                     break;
-                case "3":
-                    Console.WriteLine("Enter From csv");
-                    var fromCSv = Console.ReadLine();
-                    Console.WriteLine($"Enter to csv");
-                    var toCsv = Console.ReadLine();
-                    GenerateMap(fromCSv, toCsv);
-                    break;
                 default:
                     Console.WriteLine("Press Any key to exit");
                     Console.Read();
                     Environment.Exit(0);
                     break;
             }
-        }
-
-        private static void GenerateMap(string fromCsv, string toCsv)
-        {
-            var fromList = new List<MapData>();
-            var encoding = Encoding.GetEncoding("iso-8859-1");//Encoding.UTF8;
-            using (CsvReader reader = new CsvReader(new StreamReader(fromCsv, encoding),
-                new CsvConfiguration(CultureInfo.InvariantCulture) {Delimiter = ",", BadDataFound = BadDataFunc}))
-            {
-                var i = 0;
-                reader.Read();
-                
-                while (reader.Read())
-                {
-                    Console.WriteLine($"Reading record- {i}");
-                    var data = new MapData
-                    {
-                        DbId = reader.GetField<int>(0),
-                        Code = reader.GetField<string>(1),
-                        Text = reader.GetField<string>(2),
-                        EngText = reader.GetField<string>(3),
-                        Lc = reader.GetField<int>(4),
-                        Ct = reader.GetField<int>(5)
-                    };
-                    fromList.Add(data);
-                }
-            }
-            
-            var toList = new List<MapData>();
-            using (CsvReader reader = new CsvReader(new StreamReader(toCsv, encoding),
-                new CsvConfiguration(CultureInfo.InvariantCulture) {Delimiter = ",", BadDataFound = BadDataFunc}))
-            {
-                var i = 0;
-                reader.Read();
-                
-                while (reader.Read())
-                {
-                    Console.WriteLine($"Reading record- {i}");
-                    var data = new MapData
-                    {
-                        Code = reader.GetField<string>(0),
-                        Text = reader.GetField<string>(1),
-                        EngText = reader.GetField<string>(2),
-                      
-                    };
-                    toList.Add(data);
-                }
-            }
-
-            var results = new List<MapData>();
-            foreach (var map in toList)    
-            {
-                if (fromList.Any(x => x.Code == map.Code))
-                {
-                    var fromData = fromList.First(x => x.Code == map.Code);
-                    map.Lc = fromData.Lc;
-                    map.Ct = fromData.Ct;
-                    map.DbId = fromData.DbId;
-                    map.EngText = fromData.EngText;
-                }
-                
-                results.Add(map);
-            }
-
-            var missed = fromList.Where(x => results.Any(y => y.Code == x.Code) == false);
-            results.AddRange(missed);
-
-            using (TextWriter file = new StreamWriter(".\\mapped.csv", false, Encoding.UTF8))
-            {
-                CsvSerializer csv = new CsvSerializer(file, CultureInfo.InvariantCulture);
-                csv.Write(new[] {"dbID,Shp Code,French,English,LC,CT,IRR"});
-                csv.WriteLine();
-                foreach (var result in results)
-                {
-                    csv.Write(new []{result.DbId.ToString(),result.Code,result.Text,result.EngText,result.Lc.ToString(),result.Ct.ToString(),});
-                    csv.WriteLine();
-                }
-            }
-        }
-
-        private static void BadDataFunc(ReadingContext obj)
-        {
-            Console.WriteLine($"Error-{obj.RawRecord}");
-        }
-
-
-        class MapData
-        {
-            public string Code { get; set; }
-            public string Text { get; set; }
-            public string EngText { get; set; }
-
-            public int DbId { get; set; }
-            public int Lc { get; set; }
-            public int Ct { get; set; }
         }
 
         private static void GenerateConfCsv()
@@ -149,7 +43,7 @@ namespace MetadataExcelVersionUpgrade
             foreach (var file in files)
             {
                 var fileInfo = new FileInfo(file);
-
+                
                 using (var fileStream = File.OpenRead(file))
                 {
                     var cellValues = GetMetadataFromFile(fileStream, 7, 3);
@@ -158,13 +52,12 @@ namespace MetadataExcelVersionUpgrade
                         $"{fileInfo.Name},{GetValue(cells, "LandCover")},{GetValue(cells, "CropType")},{GetValue(cells, "Irrigation")}");
                 }
             }
-
-            File.WriteAllText("scores.csv", strBuilder.ToString());
+            File.WriteAllText("scores.csv",strBuilder.ToString());
         }
 
         private static string GetValue(IEnumerable<ExcelMetadata> cells, string name)
         {
-            return cells.First(x => x.Name.Contains(name)).Value;
+            return cells.First(x=>x.Name.Contains(name)).Value;
         }
 
         private static void UpgradeMetadataExcelVersions()
@@ -211,7 +104,7 @@ namespace MetadataExcelVersionUpgrade
             ISheet sheet;
             var xssWorkbook = new XSSFWorkbook(fileStream);
             sheet = xssWorkbook.GetSheetAt(0);
-
+            
             var lastRowNum = sheet.LastRowNum;
             for (int i = 1; i < lastRowNum; i++)
             {
@@ -228,18 +121,16 @@ namespace MetadataExcelVersionUpgrade
                     Console.WriteLine(e);
                     throw;
                 }
-
+                
                 var markerText = GetMarkerText(row, lastIndexForMarker);
                 if (string.IsNullOrEmpty(markerText))
                 {
-                    continue;
+                   continue;
                 }
-
                 var cellValue = ExcelOps.GetCellValue(row.GetCell(valueCell));
                 Console.WriteLine($"Reading marker- {markerText} and cellValue- {cellValue}");
                 metadatas.Add(new ExcelMetadata {Name = markerText, Value = cellValue});
             }
-
             return metadatas.ToArray();
         }
 
@@ -253,15 +144,12 @@ namespace MetadataExcelVersionUpgrade
                 {
                     continue;
                 }
-
                 break;
             }
-
             if (string.IsNullOrEmpty(marker))
             {
                 return string.Empty;
             }
-
             return ExcelMarkers.AllowedAttributes.FirstOrDefault(x => x.Contains(marker));
         }
 
@@ -274,8 +162,8 @@ namespace MetadataExcelVersionUpgrade
                 var stream = File.Create(outPutFile);
                 stream.Dispose();
             }
-
-            ExcelOps.WriteMetadata(template, File.OpenWrite(outPutFile), excelMetadatas);
+            
+            ExcelOps.WriteMetadata(template,File.OpenWrite(outPutFile), excelMetadatas);
         }
     }
 }

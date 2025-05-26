@@ -2,25 +2,25 @@
 using IIASA.WorldCereal.Rdm.Dtos;
 using IIASA.WorldCereal.Rdm.Entity;
 using IIASA.WorldCereal.Rdm.Mappings;
+using Volo.Abp.AutoMapper;
 
-namespace IIASA.WorldCereal.Rdm
+namespace IIASA.WorldCereal.Rdm;
+
+public class RdmApplicationAutoMapperProfile : Profile
 {
-    public class RdmApplicationAutoMapperProfile : Profile
+    public RdmApplicationAutoMapperProfile()
     {
-        public RdmApplicationAutoMapperProfile()
-
-        {
-            /* You can configure your AutoMapper mapping configuration here.
-             * Alternatively, you can split your mapping configurations
-             * into multiple profile classes for a better organization. */
-
-            CreateMap<StoreDto, StoreEntity>().ReverseMap();
+        /* You can configure your AutoMapper mapping configuration here.
+         * Alternatively, you can split your mapping configurations
+         * into multiple profile classes for a better organization. */
+         CreateMap<StoreDto, StoreEntity>().ReverseMap();
+         CreateMap<EoTypeDto, EoType>().IgnoreAuditedObjectProperties().ReverseMap();
 
             CreateMap<AddStoreDto, StoreEntity>()
                 .ForMember(x => x.StoreType, m => m.MapFrom(x => x.StoreType))
                 .ForMember(x => x.ConnectionString, m => m.MapFrom(x => x.ConnectionString))
                 .ForMember(x => x.Name, m => m.MapFrom(x => x.Name))
-                .ForAllOtherMembers(x => x.Ignore());
+                .ForAllMembers(x => x.Ignore());
 
             CreateMap<CollectionMetadataEntity, MasterCollectionStoreInfoDto>()
                 .ForMember(x => x.BoundingBoxPoints,
@@ -68,6 +68,5 @@ namespace IIASA.WorldCereal.Rdm
             CreateMap<DatasetEvent, DatasetEventViewModel>().ForMember(x => x.CanSubmit, x => x.Ignore());
 
             CreateMap<ConsortiumCollectionDto, ConsortiumCollection>().ReverseMap();
-        }
     }
 }

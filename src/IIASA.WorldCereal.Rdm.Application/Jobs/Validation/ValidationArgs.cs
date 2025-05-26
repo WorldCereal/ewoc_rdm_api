@@ -8,10 +8,8 @@ namespace IIASA.WorldCereal.Rdm.Jobs.Validation
     {
         public Guid UserDatasetId { get; set; }
 
-        public string Path { get; set; }
+        public string VectorFilePath { get; set; }
 
-        public string DirectoryPathToClean { get; set; }
-
-        public string ZipFilePath { get; set; }
+        public string DatasetExtractedPath { get; set; }
     }
 }

@@ -8,7 +8,7 @@ namespace ConsortiumDbUpdate
 {
     [DependsOn(
         typeof(AbpAutofacModule),
-        typeof(RdmEntityFrameworkCoreDbMigrationsModule),
+        typeof(RdmEntityFrameworkCoreModule),
         typeof(RdmApplicationContractsModule),
         typeof(RdmApplicationModule)
     )]

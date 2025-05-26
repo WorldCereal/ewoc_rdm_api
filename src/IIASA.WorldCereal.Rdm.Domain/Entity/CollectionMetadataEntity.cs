@@ -16,19 +16,21 @@ namespace IIASA.WorldCereal.Rdm.Entity
         public StoreType StoreType { get; set; }
         public CollectionType Type { get; set; }
         public AccessType AccessType { get; set; }
-        public string Title { get; set; }
-        public TypeOfObservationMethod TypeOfObservationMethod { get; set; }
-        public string Description { get; set; }
+        public string Title { get; set; } = string.Empty;
         public long FeatureCount { get; set; }
-        public double ConfidenceLandCover { get; set; }
-        public double ConfidenceCropType { get; set; }
-        public double ConfidenceIrrigationType{ get; set; }
-        public int[] LandCovers { get; set; }
-        public int[] CropTypes { get; set; }
+        public long[] EwocCodes { get; set; }
         public int[] IrrTypes { get; set; }
+
+        public int ConfidenceLandCover { get; set; }
+        
+        public int ConfidenceCropType { get; set; }
+        
+        public int ConfidenceIrrigationType { get; set; }
         [Required] public Geometry Extent { get; set; }
         [Required] public DateTime FirstDateOfValidityTime { get; set; }
         [Required] public DateTime LastDateOfValidityTime { get; set; }
-        public string AdditionalData { get; set; } // to store raster patches in s3 and store base url here
+
+        public string AdditionalData { get; set; } =
+            string.Empty; // to store raster patches in s3 and store base url here
     }
 }

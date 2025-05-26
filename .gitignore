@@ -15,6 +15,7 @@
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
+[Ll]ogs/
 x64/
 x86/
 bld/
@@ -24,6 +25,7 @@ bld/
 node_modules/
 libs/
 docs/
+[Dd]ata/
 
 # Visual Studio 2015 cache/options directory
 .vs/

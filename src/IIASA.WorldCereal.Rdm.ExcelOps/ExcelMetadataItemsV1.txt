@@ -40,3 +40,9 @@ CuratedDataSet:CurationByWordCereal::
 CuratedDataSet:ConfidenceCropType::
 CuratedDataSet:ConfidenceLandCover::
 CuratedDataSet:ConfidenceIrrigationRainfed::
+OriginalDataSet:Provider:UserName
+CuratedDataSet:Downloads
+CuratedDataSet:Sample:Downloads
+CuratedDataSet:Metadata:Downloads
+CuratedDataSet:Harmonization:Pdf
+CuratedDataSet:Harmonization:Xl

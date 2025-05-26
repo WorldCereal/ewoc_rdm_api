@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
@@ -7,8 +8,12 @@ using System.Threading.Tasks;
 using IIASA.WorldCereal.Rdm.Entity;
 using IIASA.WorldCereal.Rdm.EntityFrameworkCore;
 using IIASA.WorldCereal.Rdm.Enums;
+using IIASA.WorldCereal.Rdm.ExcelOps;
+using IIASA.WorldCereal.Rdm.Mappings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using NetTopologySuite.Geometries;
+using NetTopologySuite.IO;
 using Npgsql;
 using Volo.Abp.Data;
 using Volo.Abp.Domain.Entities;
@@ -61,6 +66,48 @@ namespace IIASA.WorldCereal.Rdm.Core
             return await _masterCollectionStoreRepository.InsertAsync(masterCollectionStoreInfo);
         }
 
+        public async Task<Geometry?> GetExtentFromDb(string collectionId, StoreType storeType)
+        {
+            var store = await GetStoreEntity(storeType);
+
+            var dbName = GetDbName(collectionId);
+
+            var connStr = store.ConnectionString + $"Database={dbName};";
+
+            using (var connection = new NpgsqlConnection(connStr))
+            {
+                //TODO take user "postgres" from config
+                var cmdText =
+                    "SELECT st_astext(ST_Envelope(ST_Union(ST_Envelope(\"Geometry\")))) AS table_extent FROM \"Rdm_Items\" where \"Extract\" = 1;";
+
+                var createDbCmd = new NpgsqlCommand(cmdText, connection);
+                connection.Open();
+                try
+                {
+                    var extentValue = await createDbCmd.ExecuteScalarAsync();
+                    var reader = new WKTReader();
+                    // Read the WKT string into a Geometry object
+                    var geometry = reader.Read(extentValue?.ToString());
+                    // Output the geometry
+                    Console.WriteLine($"Geometry: {geometry}");
+                    return geometry;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                }
+
+                await connection.CloseAsync();
+            }
+
+            return null;
+        }
+
+        public static string GetDbName(string collectionId)
+        {
+            return $"wc{collectionId}";
+        }
+
         public async Task<CollectionMetadataEntity> GetMasterCollectionStoreInfo(string collectionId)
         {
             return await _masterCollectionStoreRepository.FirstOrDefaultAsync(x =>
@@ -101,7 +148,16 @@ namespace IIASA.WorldCereal.Rdm.Core
                 var masterCollectionStoreInfo =
                     await _masterCollectionStoreRepository.GetAsync(x => x.CollectionId == collectionId);
                 var store = await GetStoreEntity(masterCollectionStoreInfo.StoreType);
-                await DeleteDatabaseAsync(store.ConnectionString, collectionId);
+                try
+                {
+                    await DeleteDatabaseAsync(store.ConnectionString, collectionId);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    throw;
+                }
+
                 await _masterCollectionStoreRepository.DeleteAsync(x => x.CollectionId == collectionId);
             }
 
@@ -111,7 +167,8 @@ namespace IIASA.WorldCereal.Rdm.Core
                 await _tenantRepository.DeleteAsync(tenant);
             }
 
-            var backups = await _userDatasetBackups.Where(x => x.CollectionId == collectionId).ToListAsync();
+            var backups = await (await _userDatasetBackups.GetQueryableAsync())
+                .Where(x => x.CollectionId == collectionId).ToListAsync();
             foreach (var datasetBackup in backups)
             {
                 CleanFiles(datasetBackup.ZipFilePath);
@@ -134,16 +191,16 @@ namespace IIASA.WorldCereal.Rdm.Core
 
         private static async Task MigrateCollectionDb(string connectionString)
         {
-            DbContextOptionsBuilder<RdmMigrationsDbContext> contextBuilder =
-                new DbContextOptionsBuilder<RdmMigrationsDbContext>();
+            DbContextOptionsBuilder<RdmDbContext> contextBuilder =
+                new DbContextOptionsBuilder<RdmDbContext>();
             contextBuilder.UseNpgsql(connectionString, x => x.UseNetTopologySuite());
-            var db = new RdmMigrationsDbContext(contextBuilder.Options);
+            var db = new RdmDbContext(contextBuilder.Options);
             await db.Database.MigrateAsync();
         }
 
         private async Task<StoreEntity> GetStoreEntity(StoreType storeType)
         {
-            var store = await _storeRepository.Where(x => x.StoreType == storeType)
+            var store = await (await _storeRepository.GetQueryableAsync()).Where(x => x.StoreType == storeType)
                 .OrderBy(x => x.Count).FirstOrDefaultAsync();
             if (store == null)
             {
@@ -163,9 +220,9 @@ namespace IIASA.WorldCereal.Rdm.Core
             }
         }
 
-        private async Task DeleteDatabaseAsync(string connectionString, string dbName)
+        private async Task DeleteDatabaseAsync(string connectionString, string colId)
         {
-            dbName = $"wc{dbName}";
+            var dbName = GetDbName(colId);
             string connStr = connectionString;
 
             var connection = new NpgsqlConnection(connStr);
@@ -173,20 +230,27 @@ namespace IIASA.WorldCereal.Rdm.Core
     UPDATE pg_database SET datallowconn = 'false' WHERE datname = '{dbName}';
     SELECT pg_terminate_backend(pid)
     FROM pg_stat_activity
-    WHERE datname = '{dbName}';
-    drop database  {dbName};
+    WHERE datname = '{dbName}';           
     ";
             var createDbCmd = new NpgsqlCommand(cmdText, connection);
-            connection.Open();
+            await connection.OpenAsync();
             await createDbCmd.ExecuteNonQueryAsync();
+            await connection.CloseAsync();
 
-            connection.ReloadTypes();
-            connection.Close();
+            var dropCmd = $"drop database  {dbName};";
+            var dropDbCmd = new NpgsqlCommand(dropCmd, connection);
+
+            await connection.OpenAsync();
+            await dropDbCmd.ExecuteNonQueryAsync();
+
+            await connection.ReloadTypesAsync();
+            await connection.CloseAsync();
+            await connection.DisposeAsync();
         }
 
-        public static async Task<string> CreateDatabaseAsync(string connectionString, string dbName)
+        private static async Task<string> CreateDatabaseAsync(string connectionString, string colId)
         {
-            dbName = $"wc{dbName}";
+            var dbName = GetDbName(colId);
             string connStr = connectionString;
 
             // create db
@@ -244,13 +308,83 @@ namespace IIASA.WorldCereal.Rdm.Core
         {
             using (var connection = new NpgsqlConnection(connStr))
             {
-                var extensionPostgis = "CREATE EXTENSION POSTGIS;";
+                var extensionPostgis = "CREATE EXTENSION if not exists POSTGIS;";
                 var command = new NpgsqlCommand(extensionPostgis, connection);
                 connection.Open();
                 await command.ExecuteNonQueryAsync();
                 connection.ReloadTypes();
                 connection.Close();
             }
+        }
+
+        public static IList<MetadataItem> GetCollectionDefaultItems(CollectionMetadataEntity data)
+        {
+            return new List<MetadataItem>
+            {
+                new() { Name = ExcelMarkers.DatasetCollectionId, Value = data.CollectionId },
+                new() { Name = ExcelMarkers.DatasetTitle, Value = data.Title },
+                new()
+                {
+                    Name = ExcelMarkers.GeometryPointOrPolygonOrRaster,
+                    Value = GetDsType(data)
+                },
+                new()
+                {
+                    Name = ExcelMarkers.NoOfObservations,
+                    Value = data.FeatureCount.ToString()
+                },
+                new()
+                {
+                    Name = ExcelMarkers.ListLandCovers,
+                    Value = string.Join(";",
+                        data.EwocCodes.Select(x => x == 0 ? 0 : int.Parse(x.ToString().Substring(0, 2))).Distinct())
+                },
+                new()
+                {
+                    Name = ExcelMarkers.ListOfCropTypes,
+                    Value = string.Join(";", data.EwocCodes)
+                },
+                new()
+                {
+                    Name = ExcelMarkers.ListOfIrrigationCodes,
+                    Value = string.Join(";", data.IrrTypes)
+                },
+                new()
+                {
+                    Name = ExcelMarkers.GeometryBoundingBoxLl,
+                    Value = SpatialMappingHelper.GetLowerLeftCoordinates(data.Extent)
+                },
+                new()
+                {
+                    Name = ExcelMarkers.GeometryBoundingBoxUr,
+                    Value = SpatialMappingHelper.GetUpperRightCoordinates(data.Extent)
+                },
+                new()
+                {
+                    Name = ExcelMarkers.FirstDateObservation,
+                    Value = data.FirstDateOfValidityTime.ToString("d/M/yyyy")
+                },
+                new()
+                {
+                    Name = ExcelMarkers.LastDateObservation,
+                    Value = data.LastDateOfValidityTime.ToString("d/M/yyyy")
+                },
+            };
+        }
+
+        private static string GetDsType(CollectionMetadataEntity data)
+        {
+            if (data.Type == CollectionType.ClassifiedMap)
+            {
+                return "Raster";
+            }
+
+            if (data.Type == CollectionType.Point)
+            {
+                return "Point";
+            }
+
+            return "Polygon";
         }
     }
 }

@@ -1,9 +1,6 @@
-﻿using System.Threading;
-using System.Threading.Tasks;
-using IIASA.WorldCereal.Rdm.EntityFrameworkCore;
+﻿using IIASA.WorldCereal.Rdm.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Serilog;
 using Volo.Abp;
 
 namespace ConsortiumDbUpdate
@@ -19,14 +16,16 @@ namespace ConsortiumDbUpdate
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
-            using (var application = AbpApplicationFactory.Create<RdmDbConsortiumModule>(options =>
+            AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+            
+            using (var application = await AbpApplicationFactory.CreateAsync<RdmDbConsortiumModule>(options =>
+                   {
+                       options.UseAutofac();
+                       //options.Services.AddLogging(c => c.AddSerilog());
+                       options.Services.AddAbpDbContext<RdmDbContext>(x => x.AddDefaultRepositories(true));
+                   }))
             {
-                options.UseAutofac();
-                options.Services.AddLogging(c => c.AddSerilog());
-                options.Services.AddAbpDbContext<RdmDbContext>();
-            }))
-            {
-                application.Initialize();
+                await application.InitializeAsync();
                 
 
                 var rdmConsortiumService = application
@@ -35,7 +34,7 @@ namespace ConsortiumDbUpdate
                 
                 await rdmConsortiumService.Start();
 
-                application.Shutdown();
+                await application.ShutdownAsync();
 
                 _hostApplicationLifetime.StopApplication();
             }

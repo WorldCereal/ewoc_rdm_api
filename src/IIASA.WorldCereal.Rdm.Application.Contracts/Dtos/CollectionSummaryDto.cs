@@ -20,4 +20,12 @@ namespace IIASA.WorldCereal.Rdm.Dtos
         public string AdditionalData { get; set; }
         public string[] Crs { get; set; } = {"http://www.opengis.net/def/crs/EPSG/0/4326"};
     }
+
+    public class DownloadCounts
+    {
+        public string CollectionId { get; set; }
+        public int Dataset { get; set; }
+        public int Sample { get; set; }
+        public int Metadata { get; set; }
+    }
 }

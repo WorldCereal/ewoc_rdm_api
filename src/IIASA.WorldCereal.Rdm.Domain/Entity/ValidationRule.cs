@@ -14,8 +14,8 @@ namespace IIASA.WorldCereal.Rdm.Entity
 
         public string MissingErrorMessage { get; set; }
 
-        public string InvalidValueErrorMessage { get; set; }
+        public string InvalidValueErrorMessage { get; set; } = string.Empty;
 
-        public List<RuleValidValue> RuleValidValues { get; set; } = new List<RuleValidValue>();
+        public List<RuleValidValue> RuleValidValues { get; set; } = [];
     }
 }

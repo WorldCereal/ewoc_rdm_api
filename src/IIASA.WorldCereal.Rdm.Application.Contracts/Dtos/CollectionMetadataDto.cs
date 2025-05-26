@@ -13,11 +13,10 @@ namespace IIASA.WorldCereal.Rdm.Dtos
         public CollectionType Type { get; set; }
         public AccessType AccessType { get; set; }
         public TypeOfObservationMethod TypeOfObservationMethod { get; set; }
-        public double ConfidenceLandCover { get; set; }
-        public double ConfidenceCropType { get; set; }
-        public double ConfidenceIrrigationType{ get; set; }
-        public int[] LandCovers { get; set; }
-        public int[] CropTypes { get; set; }
+        public int ConfidenceLandCover { get; set; }
+        public int ConfidenceCropType { get; set; }
+        public int ConfidenceIrrigationType{ get; set; }
+        public long[] EwocCodes { get; set; }
         public int[] IrrTypes { get; set; }
         public ExtentDto Extent { get; set; }
         public string AdditionalData { get; set; }  // for raster store details

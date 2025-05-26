@@ -1,16 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.IO.Compression;
-using System.Linq;
-using System.Net.Http;
+﻿using System.IO.Compression;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using Aws4RequestSigner;
-using Flurl.Http;
+using EFCore.BulkExtensions;
+using IIASA.WorldCereal.Rdm;
 using IIASA.WorldCereal.Rdm.Core;
+using IIASA.WorldCereal.Rdm.Core.Vector;
 using IIASA.WorldCereal.Rdm.Entity;
+using IIASA.WorldCereal.Rdm.EntityFrameworkCore;
 using IIASA.WorldCereal.Rdm.Enums;
 using IIASA.WorldCereal.Rdm.ExcelOps;
 using IIASA.WorldCereal.Rdm.Jobs.UploadUserDataset;
@@ -19,7 +14,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
-using Npgsql.Bulk;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.MultiTenancy;
@@ -39,15 +33,16 @@ namespace ConsortiumDbUpdate
         private readonly ICurrentTenant _currentTenant;
         private readonly IRepository<ItemEntity, long> _itemRepository;
         private readonly IRepository<MetadataItem, int> _metadataRepository;
+        private readonly IItemsCodeStatsHelper _itemsCodeStatsHelper;
         private readonly IRepository<CollectionMetadataEntity, Guid> _tenantCollectionStoreRepository;
         private readonly IRepository<ConsortiumCollection, int> _consortiumColsRepository;
-        private IUnitOfWork _unitOfWork;
-        private readonly S3Config _s3Config;
+        private IUnitOfWork? _unitOfWork;
+        private AzureFileUploader _azureFileUploader;
 
         public RdmConsortiumService(ILogger<RdmConsortiumService> logger, IUnitOfWorkManager unitOfWorkManager,
             IAddCollectionHelper addCollectionHelper, ITenantRepository tenantRepository, IConfiguration configuration,
             ICurrentTenant currentTenant, IRepository<ItemEntity, long> itemRepository,
-            IRepository<MetadataItem, int> metadataRepository,
+            IRepository<MetadataItem, int> metadataRepository, IItemsCodeStatsHelper itemsCodeStatsHelper,
             IRepository<CollectionMetadataEntity, Guid> tenantCollectionStoreRepository,
             IRepository<ConsortiumCollection, int> consortiumColsRepository)
         {
@@ -59,15 +54,28 @@ namespace ConsortiumDbUpdate
             _currentTenant = currentTenant;
             _itemRepository = itemRepository;
             _metadataRepository = metadataRepository;
+            _itemsCodeStatsHelper = itemsCodeStatsHelper;
             _tenantCollectionStoreRepository = tenantCollectionStoreRepository;
             _consortiumColsRepository = consortiumColsRepository;
 
-            _s3Config = new S3Config();
-            _configuration.Bind("S3Config", _s3Config);
+            var azureConfig = new AzureConfig();
+            _configuration.GetSection("AzureStoreConfig").Bind(azureConfig);
+            _azureFileUploader = new AzureFileUploader(azureConfig);
+        }
+        
+        public async Task Start()
+        {
+            var result = true;
+            var cycle = 1;
+            while (result)
+            {
+                Console.WriteLine($"Cycle - {cycle++}");
+                result = await Process();
+            }
         }
 
         [UnitOfWork]
-        public async Task Start()
+        private async Task<bool> Process()
         {
             _unitOfWork = _unitOfWorkManager.Current;
             if (_unitOfWork == null)
@@ -75,30 +83,31 @@ namespace ConsortiumDbUpdate
                 _unitOfWork = _unitOfWorkManager.Begin(requiresNew: true);
             }
 
-            var consortiumCollections =
-                await _consortiumColsRepository.Where(x => x.NeedsUpdate).AsNoTracking().ToListAsync();
+            var consortiumCollections = await (await _consortiumColsRepository.GetQueryableAsync())
+                .Where(x => x.NeedsUpdate).AsNoTracking()
+                .ToListAsync();
 
-            _logger.LogInformation($"Found following {consortiumCollections.Count} items for update");
+            Console.WriteLine($"Found following {consortiumCollections.Count} items for update");
 
             foreach (var item in consortiumCollections)
             {
-                _logger.LogInformation(
+                Console.WriteLine(
                     $"{item.Id}.NeedsUpdate={item.NeedsUpdate},OverwriteFeatures={item.OverwriteFeatures}," +
                     $"OverwriteOtherProps={item.OverwriteOtherProps},{item.DownloadZipUrl}");
             }
 
             if (consortiumCollections.Any() == false)
             {
-                _logger.LogInformation("No collections to update");
-                return;
+                Console.WriteLine("No collections to update");
+                return false;
             }
 
-            FlurlHttp.GlobalSettings.Timeout = TimeSpan.FromMinutes(5);
-            FlurlHttp.GlobalSettings.ConnectionLeaseTimeout = TimeSpan.FromMinutes(5);
+
+            //FlurlHttp.GlobalSettings.Timeout = TimeSpan.FromMinutes(5);
+            //FlurlHttp.GlobalSettings.ConnectionLeaseTimeout = TimeSpan.FromMinutes(5);
             var tempPath = _configuration.GetValue<string>("TempFolder");
 
-
-            foreach (var collection in consortiumCollections)
+            foreach (var collection in consortiumCollections.Take(2))
             {
                 if (collection.NeedsUpdate == false)
                 {
@@ -110,12 +119,29 @@ namespace ConsortiumDbUpdate
                     collection.Successful = false;
                     collection.Errors = string.Empty;
 
+                    Console.WriteLine($"Deleting all files in path - {tempPath}");
+                    var files = Directory.GetFiles(tempPath, "*", SearchOption.AllDirectories);
+                    foreach (var file in files)
+                    {
+                        try
+                        {
+                            // Delete the file
+                            File.Delete(file);
+                            Console.WriteLine($"Deleted: {file}");
+                        }
+                        catch (Exception ex)
+                        {
+                            // If an error occurs (e.g., file is in use, no permissions), show an error message
+                            Console.WriteLine($"Failed to delete {file}: {ex.Message}");
+                        }
+                    }
+
                     await AddOrUpdateCollection(collection, tempPath);
                     collection.Successful = true;
                     collection.NeedsUpdate = false;
                     collection.OverwriteFeatures = false;
                     collection.OverwriteOtherProps = false;
-                    _logger.LogInformation(
+                    Console.WriteLine(
                         $"Completed! - {collection.Id}.NeedsUpdate={collection.NeedsUpdate}," +
                         $"OverwriteFeatures={collection.OverwriteFeatures}," +
                         $"OverwriteOtherProps={collection.OverwriteOtherProps}," +
@@ -129,31 +155,40 @@ namespace ConsortiumDbUpdate
 
             await _consortiumColsRepository.UpdateManyAsync(consortiumCollections);
             await _unitOfWork.SaveChangesAsync(); // save changes to db
+            return consortiumCollections.Any(x=>x.NeedsUpdate);
         }
 
         private async Task AddOrUpdateCollection(ConsortiumCollection collection, string tempPath)
         {
+            Console.WriteLine($"Starting to add Dataset from file-{collection.DownloadZipUrl}");
             var filesFolder = await DownloadAndGetFiles(collection, tempPath);
             var metadataFile = GetFileWithExt(filesFolder, "*.xlsx");
-            _logger.LogInformation($"Extracting metadata from -{metadataFile}");
+            Console.WriteLine($"Extracting metadata from -{metadataFile}");
             var excelMetadatas = GetExcelMetadatas(metadataFile);
 
-            //AddDownloadUrlToMetadata(excelMetadatas, collection.DownloadZipUrl); Will add later.
-
             var collectionId = GetValue(excelMetadatas, ExcelMarkers.DatasetCollectionId).ToLowerInvariant()
-                .Replace("_", string.Empty).Replace("-", string.Empty).Trim();
+                .Replace(" ", "").Replace("-", "").Trim();
 
-            var filePath = GetFileWithExt(filesFolder, "*.shp");
-            if (filePath == default)
-            {
-                filePath = GetFileWithExt(filesFolder, "*.gpkg");
-            }
+            var datasetGeoParquetFilePath = GetFileWithExt(filesFolder, "*.geoparquet|*.parquet");
+
+            var harmonizationPdfFilePath = GetFileWithExt(filesFolder, "*.pdf");
+
+            var harmonizationXlFilePath = GetFileWithExt(filesFolder, "*.xlsx");
 
             var geometryFactory = new GeometryFactory(new PrecisionModel(), GeoJsonHelper.GeometryWgs84Srid);
-            _logger.LogInformation($"Extracting Features from -{filePath}");
+            Console.WriteLine($"Extracting Features from -{datasetGeoParquetFilePath}");
             var typeShape = ProvisionUserDataSetJob.GetShapeGeometryType(geometryFactory, out var bounds,
-                out var items, collectionId, filePath);
-            Directory.Delete(filesFolder, true);
+                out var items, collectionId, datasetGeoParquetFilePath);
+
+            UpdateItemsWithConfScores(items, excelMetadatas);
+
+            var sampleFilePath = await GenerateAndSaveSamples(items, bounds, filesFolder,
+                string.Concat("sample_", new FileInfo(datasetGeoParquetFilePath).Name.Split(".")[0]));
+
+            await AddDownloadUrl(excelMetadatas, datasetGeoParquetFilePath, sampleFilePath, harmonizationPdfFilePath,
+                harmonizationXlFilePath,
+                collectionId, filesFolder);
+
             var tenant = await _tenantRepository.FindByNameAsync(collectionId);
             if (tenant == null)
             {
@@ -161,8 +196,8 @@ namespace ConsortiumDbUpdate
             }
             else
             {
-                MetadataItem[] metadataItems = excelMetadatas.Select(x =>
-                    new MetadataItem {Name = x.Name, Value = x.Value, TenantId = tenant.Id}).ToArray();
+                var metadataItems = excelMetadatas.Select(x =>
+                    new MetadataItem { Name = x.Name, Value = x.Value, TenantId = tenant.Id }).ToList();
                 if (collection.OverwriteFeatures)
                 {
                     var masterCollectionStoreInfo = await UpdateMasterCollectionStoreInfo(collectionId, geometryFactory,
@@ -172,30 +207,31 @@ namespace ConsortiumDbUpdate
                         await _itemRepository.DeleteAsync(x => true, true);
                         await _metadataRepository.DeleteAsync(x => true, true);
                         await _tenantCollectionStoreRepository.DeleteAsync(x => true, true);
-                        await _unitOfWork.SaveChangesAsync();
+                        await _unitOfWork?.SaveChangesAsync()!;
                     }
 
                     await _unitOfWork.SaveChangesAsync();
-                    _logger.LogInformation($"Adding {collectionId} to tenant store");
-                    await AddFeatures(tenant, masterCollectionStoreInfo, items, metadataItems);
+                    Console.WriteLine($"Adding {collectionId} to tenant store");
+                    metadataItems.Add(ItemsCodeStatsHelper.GetCodeStats(items));
+                    await AddFeatures(tenant, masterCollectionStoreInfo, items, metadataItems.ToArray());
                 }
                 else if (collection.OverwriteOtherProps)
                 {
                     using (_currentTenant.Change(tenant.Id))
                     {
                         await _metadataRepository.DeleteAsync(x => true, true);
-                        await _unitOfWork.SaveChangesAsync();
+                        await _unitOfWork?.SaveChangesAsync()!;
                     }
 
                     var updatedCol = await UpdateMasterCollectionStoreInfo(collectionId, geometryFactory,
                         bounds, items, typeShape, excelMetadatas);
                     var context = AddUserDatasetItemsJob.GetTenantContext(tenant.ConnectionStrings.First().Value);
-                    NpgsqlBulkUploader uploader = new NpgsqlBulkUploader(context);
-                    _logger.LogInformation($"Adding {metadataItems.Length} metadataItems to tenant");
-                    await uploader.ImportAsync(metadataItems);
+
+                    Console.WriteLine($"Adding {metadataItems.Count} metadataItems to tenant");
+                    await context.BulkInsertOrUpdateAsync(metadataItems);
 
                     updatedCol.TenantId = tenant.Id;
-                    await uploader.ImportAsync(new[] {updatedCol});
+                    await context.BulkInsertOrUpdateAsync(new[] { updatedCol });
                     updatedCol.TenantId = null;
                 }
                 else
@@ -207,23 +243,121 @@ namespace ConsortiumDbUpdate
                     {
                         var data = await _tenantCollectionStoreRepository.FirstAsync();
                         data.FeatureCount += items.Count;
-                        await _unitOfWork.SaveChangesAsync();
+                        await _unitOfWork?.SaveChangesAsync()!;
                     }
 
-                    var dbentity = await _addCollectionHelper.GetMasterCollectionStoreInfo(collectionId);
-                    dbentity.FeatureCount += items.Count;
-                    await _addCollectionHelper.SaveMasterCollectionStoreInfoAsync(dbentity);
+                    var entity = await _addCollectionHelper.GetMasterCollectionStoreInfo(collectionId);
+                    entity.FeatureCount += items.Count;
+                    await _addCollectionHelper.SaveMasterCollectionStoreInfoAsync(entity);
                 }
             }
         }
 
-        private void AddDownloadUrlToMetadata(List<ExcelMetadata> excelMetadatas, string collectionDownloadZipUrl)
+        private static void UpdateItemsWithConfScores(IList<ItemEntity> items, List<ExcelMetadata> excelMetadatas)
         {
-            excelMetadatas.Add(new ExcelMetadata
+            var lcConf = ItemsCodeStatsHelper.GetValue(excelMetadatas, ExcelMarkers.ConfidenceLandCover);
+            var ctConf = ItemsCodeStatsHelper.GetValue(excelMetadatas, ExcelMarkers.ConfidenceCropType);
+            //var irrConf = ItemsCodeStatsHelper.GetValue(excelMetadatas, ExcelMarkers.ConfidenceIrrigation);
+
+            foreach (var item in items)
             {
-                Name = ExcelMarkers.CollectionDownloadUrl,
-                Value = collectionDownloadZipUrl
-            });
+                item.LcQualityScore = lcConf;
+                item.CtQualityScore = ctConf;
+                item.QualityScore = ctConf;
+            }
+        }
+
+        private async Task<string> GenerateAndSaveSamples(IList<ItemEntity> items, Envelope bounds, string tempPath,
+            string file)
+        {
+            var samples = items.Where(x => x.Extract != 0).ToArray();
+            return await GeoParquetWriter.WriteDataset(samples, tempPath, file, VectorHelper.GetCoordinates(bounds),
+                false);
+        }
+
+        private async Task AddDownloadUrl(List<ExcelMetadata> excelMetadatas, string filePath,
+            string sampleFilePath, string harmonizationPdfFilePath, string harmonizationXlFilePath, string collectionId,
+            string filesFolder)
+        {
+            var accessType = EntityAccessType(excelMetadatas);
+            await using (var fileStream = File.OpenRead(filePath))
+            {
+                var url = await Upload(filePath, collectionId, accessType, fileStream);
+
+                excelMetadatas.Add(new ExcelMetadata
+                {
+                    Name = ExcelMarkers.GeoParquetDownloadUrl,
+                    Value = url
+                });
+            }
+
+            if (File.Exists(sampleFilePath))
+            {
+                await using (var fileStream = File.OpenRead(sampleFilePath))
+                {
+                    var url = await Upload(sampleFilePath, collectionId, accessType, fileStream);
+                    excelMetadatas.Add(new ExcelMetadata
+                    {
+                        Name = ExcelMarkers.SampleDownloadUrl,
+                        Value = url
+                    });
+                }
+            }
+
+            if (File.Exists(harmonizationPdfFilePath))
+            {
+                await using (var fileStream = File.OpenRead(harmonizationPdfFilePath))
+                {
+                    var url = await Upload(harmonizationPdfFilePath, collectionId, accessType, fileStream);
+                    excelMetadatas.Add(new ExcelMetadata
+                    {
+                        Name = ExcelMarkers.DatasetHarmonizationPdf,
+                        Value = url
+                    });
+                }
+            }
+
+            if (File.Exists(harmonizationXlFilePath))
+            {
+                await using (var fileStream = File.OpenRead(harmonizationXlFilePath))
+                {
+                    var url = await Upload(harmonizationXlFilePath, collectionId, accessType, fileStream);
+                    excelMetadatas.Add(new ExcelMetadata
+                    {
+                        Name = ExcelMarkers.DatasetHarmonizationXl,
+                        Value = url
+                    });
+                }
+            }
+
+            var filesToIgnore = SearchHelper.GetFiles(filesFolder, "*.xlsx|*.geoparquet|*.parquet|*.pdf",
+                SearchOption.AllDirectories);
+            var otherFiles = Directory.GetFiles(filesFolder).Where(x => filesToIgnore.Contains(x) == false);
+            foreach (var file in otherFiles)
+            {
+                await using (var fileStream = File.OpenRead(file))
+                {
+                    var url = await Upload(file, collectionId, accessType, fileStream);
+
+                    excelMetadatas.Add(new ExcelMetadata
+                    {
+                        Name = ExcelMarkers.OtherFileLink,
+                        Value = url
+                    });
+                }
+            }
+
+            Directory.Delete(filesFolder, true);
+        }
+
+        private async Task<string> Upload(string filePath, string collectionId, AccessType accessType,
+            FileStream fileStream)
+        {
+            var fileName = new FileInfo(filePath).Name;
+            var url = accessType == AccessType.Public
+                ? await _azureFileUploader.UploadPublicFileAsync(collectionId, fileStream, fileName)
+                : await _azureFileUploader.UploadPrivateFileAsync(collectionId, fileStream, fileName);
+            return url;
         }
 
         private async Task<CollectionMetadataEntity> UpdateMasterCollectionStoreInfo(string collectionId,
@@ -249,14 +383,16 @@ namespace ConsortiumDbUpdate
             var insertedCollectionMetadataEntity =
                 await Create(geometryFactory, bounds, items, typeShape, excelMetadatas, collectionId);
             await _unitOfWork.SaveChangesAsync(); // save changes to db
-            _logger.LogInformation($"Completed adding {collectionId} to master store");
+            Console.WriteLine($"Completed adding {collectionId} to master store");
 
             // now update the tenant
             var tenant = await _tenantRepository.FindByNameAsync(collectionId);
-            MetadataItem[] metadataItems = excelMetadatas.Select(x =>
-                new MetadataItem {Name = x.Name, Value = x.Value, TenantId = tenant.Id}).ToArray();
-            _logger.LogInformation($"Adding {collectionId} to tenant store");
-            await AddFeatures(tenant, insertedCollectionMetadataEntity, items, metadataItems);
+            var metadataItems = excelMetadatas.Select(x =>
+                new MetadataItem { Name = x.Name, Value = x.Value, TenantId = tenant.Id }).ToList();
+            Console.WriteLine($"Adding {collectionId} to tenant store");
+            var metadataItem = ItemsCodeStatsHelper.GetCodeStats(items);
+            metadataItems.Add(metadataItem);
+            await AddFeatures(tenant, insertedCollectionMetadataEntity, items, metadataItems.ToArray());
         }
 
         private async Task<CollectionMetadataEntity> Create(GeometryFactory geometryFactory, Envelope bounds,
@@ -266,70 +402,80 @@ namespace ConsortiumDbUpdate
             var masterCollectionStoreInfo =
                 ProvisionUserDataSetJob.GetMasterCollectionEntity(geometryFactory, bounds, items, typeShape,
                     GetValue(excelMetadatas, ExcelMarkers.DatasetTitle),
-                    TypeOfObsMethodHelper.Get(GetValue(excelMetadatas, ExcelMarkers.TypeOfObservationMethod)),
                     collectionId);
-            _logger.LogInformation($"Creating database and other details-{collectionId}");
+            Console.WriteLine($"Creating database and other details-{collectionId}");
             UpdateConfScoresAndAccess(masterCollectionStoreInfo, excelMetadatas);
             var insertedCollectionMetadataEntity =
                 await _addCollectionHelper.CreateMasterCollectionStoreInfo(masterCollectionStoreInfo);
             return insertedCollectionMetadataEntity;
         }
 
+        private int GetValue(string value)
+        {
+            int val;
+            if (int.TryParse(value, out val))
+            {
+                return val;
+            }
+
+            return 0;
+        }
+
         private void UpdateConfScoresAndAccess(CollectionMetadataEntity entity, List<ExcelMetadata> excelMetadatas)
         {
-            entity.ConfidenceLandCover = ConfHelper.Get(GetValue(excelMetadatas, ExcelMarkers.ConfidenceLandCover));
-            entity.ConfidenceCropType = ConfHelper.Get(GetValue(excelMetadatas, ExcelMarkers.ConfidenceCropType));
-            entity.ConfidenceIrrigationType =
-                ConfHelper.Get(GetValue(excelMetadatas, ExcelMarkers.ConfidenceIrrigation));
             entity.AccessType =
-                GetValue(excelMetadatas, ExcelMarkers.TypeOfLicenseAccessType).ToLowerInvariant() == "private"
-                    ? AccessType.Private
-                    : AccessType.Public;
+                EntityAccessType(excelMetadatas);
             entity.StoreType = StoreType.Reference;
+            entity.ConfidenceLandCover =
+                GetValue(excelMetadatas.FirstOrDefault(x => x.Name == ExcelMarkers.ConfidenceCropType)?.Value ?? "0");
+            entity.ConfidenceCropType =
+                GetValue(excelMetadatas.FirstOrDefault(x => x.Name == ExcelMarkers.ConfidenceCropType)?.Value ?? "0");
+            entity.ConfidenceIrrigationType =
+                GetValue(excelMetadatas.FirstOrDefault(x => x.Name == ExcelMarkers.ConfidenceIrrigation)?.Value ?? "0");
+            ;
+        }
+
+        private static AccessType EntityAccessType(List<ExcelMetadata> excelMetadatas)
+        {
+            return GetValue(excelMetadatas, ExcelMarkers.TypeOfLicenseAccessType).ToLowerInvariant() == "private"
+                ? AccessType.Private
+                : AccessType.Public;
         }
 
         private async Task AddFeatures(Tenant tenant, CollectionMetadataEntity insertedCollectionMetadataEntity,
             IList<ItemEntity> items, MetadataItem[] metadataItems)
         {
             var context = AddUserDatasetItemsJob.GetTenantContext(tenant.ConnectionStrings.First().Value);
-            NpgsqlBulkUploader uploader = new NpgsqlBulkUploader(context);
             insertedCollectionMetadataEntity.TenantId = tenant.Id;
             foreach (var entity in items)
             {
                 entity.TenantId = tenant.Id;
             }
 
-            await uploader.ImportAsync(new[] {insertedCollectionMetadataEntity});
+            await context.BulkInsertOrUpdateAsync(new[] { insertedCollectionMetadataEntity });
             insertedCollectionMetadataEntity.TenantId = null;
-            await Import(items, uploader);
+            await Import(items, context);
 
-            _logger.LogInformation($"Adding {metadataItems.Length} metadataItems to tenant");
-            await uploader.ImportAsync(metadataItems);
+            Console.WriteLine($"Adding {metadataItems.Length} metadataItems to tenant");
+            await context.BulkInsertAsync(metadataItems);
         }
 
         private async Task AddFeatures(Tenant tenant, IList<ItemEntity> items)
         {
             var context = AddUserDatasetItemsJob.GetTenantContext(tenant.ConnectionStrings.First().Value);
-            NpgsqlBulkUploader uploader = new NpgsqlBulkUploader(context);
             foreach (var entity in items)
             {
                 entity.TenantId = tenant.Id;
             }
 
-            await Import(items, uploader);
+            await Import(items, context);
         }
 
-        private async Task Import(IList<ItemEntity> items, NpgsqlBulkUploader uploader)
+        private async Task Import(IList<ItemEntity> items, RdmDbContext context)
         {
             var itemsCount = items.Count;
-            _logger.LogInformation($"Adding {itemsCount} features to tenant");
-            var batchCount = 5000;
-            for (int index = 0; index < itemsCount; index += batchCount)
-            {
-                var batch = items.Skip(index).Take(batchCount).ToArray();
-                _logger.LogInformation($"Adding {batch.Length} batch features to tenant. Skip index:{index}");
-                await uploader.ImportAsync(batch);
-            }
+            Console.WriteLine($"Adding {itemsCount} features to tenant");
+            await context.BulkInsertAsync(items, new BulkConfig { BatchSize = 10000 });
         }
 
         private List<ExcelMetadata> GetExcelMetadatas(string metadataFile)
@@ -342,7 +488,7 @@ namespace ConsortiumDbUpdate
 
             foreach (var metadata in excelMetadatas)
             {
-                _logger.LogInformation($"metadata.Name-{metadata.Name},metadata.Value-{metadata.Value}");
+                Console.WriteLine($"metadata.Name-{metadata.Name},metadata.Value-{metadata.Value}");
             }
 
             return excelMetadatas;
@@ -360,7 +506,7 @@ namespace ConsortiumDbUpdate
 
         private async Task<string> DownloadAndGetFiles(ConsortiumCollection collection, string tempPath)
         {
-            _logger.LogInformation($"Downloading file from-{collection.DownloadZipUrl}");
+            Console.WriteLine($"Downloading file from-{collection.DownloadZipUrl}");
             var file = new FileInfo(collection.DownloadZipUrl);
             var zipFilePath = Path.Combine(tempPath, file.Name);
             if (File.Exists(zipFilePath))
@@ -376,7 +522,7 @@ namespace ConsortiumDbUpdate
                 Directory.Delete(filesFolder, true);
             }
 
-            _logger.LogInformation($"Unzipping file- {zipFilePath}");
+            Console.WriteLine($"Unzipping file- {zipFilePath}");
             ZipFile.ExtractToDirectory(zipFilePath, filesFolder, Encoding.UTF8, true);
             File.Delete(zipFilePath);
             return filesFolder;
@@ -384,37 +530,48 @@ namespace ConsortiumDbUpdate
 
         private async Task DownloadFromUrl(string zipFilePath, string downloadUrl)
         {
-            var signer = new AWS4RequestSigner(_s3Config.AccessKey, _s3Config.Secret);
-            var request = new HttpRequestMessage
+            int bufferSize = 1024;
+            var timeoutMinutes = 20;
+            using (var httpClient = new HttpClient())
             {
-                Method = HttpMethod.Get,
-                RequestUri = new Uri(downloadUrl)
-            };
-
-            request = await signer.Sign(request, _s3Config.ServiceName, _s3Config.Region);
-
-            int bufferSize = 4096;
-            var client = new HttpClient();
-            using (var response = await client.SendAsync(request))
-            {
-                using (var httpStream = await response.Content.ReadAsStreamAsync())
+                httpClient.Timeout = TimeSpan.FromMinutes(timeoutMinutes);
+                using (var httpStream = await httpClient.GetStreamAsync(new Uri(downloadUrl)))
                 {
                     using (var fileStream = new FileStream(zipFilePath, FileMode.Create, FileAccess.Write,
-                        FileShare.None,
-                        bufferSize, true))
+                               FileShare.None,
+                               bufferSize, true))
                     {
                         await httpStream.CopyToAsync(fileStream, bufferSize, new CancellationToken());
                     }
                 }
             }
-        }
-    }
 
-    public class S3Config
-    {
-        public string AccessKey { get; set; }
-        public string Secret { get; set; }
-        public string Region { get; set; }
-        public string ServiceName { get; set; }
+            /*
+            var request = new FlurlRequest
+            {
+                Url = new Uri(downloadUrl),
+                Verb = HttpMethod.Get,
+                Settings = { Timeout = TimeSpan.FromMinutes(timeoutMinutes) },
+                Client = { Settings = { Timeout = TimeSpan.FromMinutes(timeoutMinutes) } }
+            };
+            //int bufferSize = 4096;
+            var client = new FlurlClient
+            {
+                Settings = { Timeout = TimeSpan.FromMinutes(timeoutMinutes) },
+                HttpClient = { Timeout = TimeSpan.FromMinutes(timeoutMinutes) }
+            };
+            using (var response = await client.SendAsync(request))
+            {
+                using (var httpStream = await response.GetStreamAsync())
+                {
+                    using (var fileStream = new FileStream(zipFilePath, FileMode.Create, FileAccess.Write,
+                               FileShare.None,
+                               bufferSize, true))
+                    {
+                        await httpStream.CopyToAsync(fileStream, bufferSize, new CancellationToken());
+                    }
+                }
+            }*/
+        }
     }
 }

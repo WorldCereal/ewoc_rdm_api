@@ -1,17 +1,14 @@
 ﻿using IIASA.WorldCereal.Rdm.Localization;
-using Microsoft.AspNetCore.Mvc;
 using Volo.Abp.Application.Services;
 
-namespace IIASA.WorldCereal.Rdm
+namespace IIASA.WorldCereal.Rdm;
+
+/* Inherit your application services from this class.
+ */
+public abstract class RdmAppService : ApplicationService
 {
-    /* Inherit your application services from this class.
-     */
-    [Route("data")]
-    public abstract class RdmAppService : ApplicationService
+    protected RdmAppService()
     {
-        protected RdmAppService()
-        {
-            LocalizationResource = typeof(RdmResource);
-        }
+        LocalizationResource = typeof(RdmResource);
     }
 }

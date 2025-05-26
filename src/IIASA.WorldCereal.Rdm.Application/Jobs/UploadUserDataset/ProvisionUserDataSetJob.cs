@@ -1,8 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Flurl.Util;
 using IIASA.WorldCereal.Rdm.Core;
+using IIASA.WorldCereal.Rdm.Core.Ai;
+using IIASA.WorldCereal.Rdm.Core.Vector;
 using IIASA.WorldCereal.Rdm.Entity;
 using IIASA.WorldCereal.Rdm.Enums;
 using Microsoft.Extensions.Logging;
@@ -20,15 +24,17 @@ namespace IIASA.WorldCereal.Rdm.Jobs.UploadUserDataset
     {
         private readonly IRepository<UserDataset, Guid> _userDatasetRepository;
         private readonly IBackgroundJobManager _backgroundJobManager;
+        private readonly MapPredictionService _mapPredictionService;
         private readonly IAddCollectionHelper _addCollectionHelper;
         private readonly ILogger<ProvisionUserDataSetJob> _logger;
 
         public ProvisionUserDataSetJob(IRepository<UserDataset, Guid> userDatasetRepository,
-            IBackgroundJobManager backgroundJobManager,
+            IBackgroundJobManager backgroundJobManager, MapPredictionService mapPredictionService,
             IAddCollectionHelper addCollectionHelper, ILogger<ProvisionUserDataSetJob> logger)
         {
             _userDatasetRepository = userDatasetRepository;
             _backgroundJobManager = backgroundJobManager;
+            _mapPredictionService = mapPredictionService;
             _addCollectionHelper = addCollectionHelper;
             _logger = logger;
         }
@@ -45,7 +51,7 @@ namespace IIASA.WorldCereal.Rdm.Jobs.UploadUserDataset
                 var geometryFactory = new GeometryFactory(new PrecisionModel(), GeoJsonHelper.GeometryWgs84Srid);
 
                 var typeShape = GetShapeGeometryType(geometryFactory, out var bounds,
-                    out var items, userDataset.CollectionId, args.Path);
+                    out var items, userDataset.CollectionId, args.VectorFilePath);
 
                 var masterCollectionStore =
                     await _addCollectionHelper.GetMasterCollectionStoreInfo(userDataset.CollectionId);
@@ -54,7 +60,8 @@ namespace IIASA.WorldCereal.Rdm.Jobs.UploadUserDataset
                 {
                     CollectionMetadataEntity masterCollectionStoreInfo =
                         GetMasterCollectionEntity(geometryFactory, bounds, items, typeShape, userDataset.Title,
-                            userDataset.TypeOfObservationMethod, userDataset.CollectionId);
+                            userDataset.CollectionId);
+
 
                     masterCollectionStore =
                         await _addCollectionHelper.CreateMasterCollectionStoreInfo(masterCollectionStoreInfo);
@@ -75,7 +82,7 @@ namespace IIASA.WorldCereal.Rdm.Jobs.UploadUserDataset
             catch (Exception e)
             {
                 userDataset.State = UserDatasetState.StoreProvisionFailed;
-                userDataset.Errors = new[] {e.ToString()};
+                userDataset.Errors = [e.ToString()];
             }
             finally
             {
@@ -111,8 +118,8 @@ namespace IIASA.WorldCereal.Rdm.Jobs.UploadUserDataset
         {
             var itemsUpdate = new AddUserDatasetItemsJobArgs
             {
-                UserDatasetId = args.UserDatasetId, Path = args.Path, DirectoryPathToClean = args.DirectoryPathToClean,
-                ZipFilePath = args.ZipFilePath
+                UserDatasetId = args.UserDatasetId, VectorFilePath = args.VectorFilePath,
+                DirectoryPathToClean = args.DatasetExtractedPath
             };
             _ = await _backgroundJobManager.EnqueueAsync(itemsUpdate, delay: TimeSpan.FromSeconds(1));
         }
@@ -126,59 +133,56 @@ namespace IIASA.WorldCereal.Rdm.Jobs.UploadUserDataset
             dateOrderedItems = dateOrderedItems.OrderBy(x => x).ToList();
 
             entity.Title = userDataset.Title;
-            entity.TypeOfObservationMethod = userDataset.TypeOfObservationMethod;
             entity.CollectionId = userDataset.CollectionId;
             entity.Type = GetCollectionType(typeShape);
             entity.Extent.EnvelopeInternal.ExpandToInclude(
-                new Polygon(new LinearRing(GetCoordinates(bounds)), geometryFactory).EnvelopeInternal);
+                new Polygon(new LinearRing(VectorHelper.GetCoordinates(bounds)), geometryFactory).EnvelopeInternal);
             entity.FeatureCount = entity.FeatureCount + items.Count;
-            entity.CropTypes = entity.CropTypes.Concat(items.Select(c => c.Ct)).Distinct().ToArray();
-            entity.LandCovers = entity.LandCovers.Concat(items.Select(c => c.Lc)).Distinct().ToArray();
-            entity.IrrTypes = entity.IrrTypes.Concat(items.Select(c => c.Irr)).Distinct().ToArray();
+            entity.EwocCodes = entity.EwocCodes.Concat(items.Select(c => c.EwocCode)).Distinct().ToArray();
+            entity.IrrTypes = entity.IrrTypes.Concat(items.Select(c => c.IrrigationStatus)).Distinct().ToArray();
             entity.FirstDateOfValidityTime = dateOrderedItems.First();
             entity.LastDateOfValidityTime = dateOrderedItems.Last();
         }
 
         public static CollectionMetadataEntity GetMasterCollectionEntity(GeometryFactory geometryFactory,
-            Envelope bounds, IList<ItemEntity> items, ShapeGeometryType typeShape, string title,
-            TypeOfObservationMethod typeOfObservationMethod, string collectionId)
+            Envelope bounds, IList<ItemEntity> items, ShapeGeometryType typeShape, string title, string collectionId)
         {
             var dateOrderedItems = items.OrderBy(x => x.ValidityTime);
             var entity = new CollectionMetadataEntity
             {
                 Title = title,
-                TypeOfObservationMethod = typeOfObservationMethod,
                 CollectionId = collectionId,
                 AccessType = AccessType.Private,
                 StoreType = StoreType.Community,
                 Type = GetCollectionType(typeShape),
-                Extent = new Polygon(new LinearRing(GetCoordinates(bounds)), geometryFactory),
+                Extent = new Polygon(new LinearRing(VectorHelper.GetCoordinates(bounds)), geometryFactory),
                 FeatureCount = items.Count,
-                CropTypes = items.Select(c => c.Ct).Distinct().ToArray(),
-                LandCovers = items.Select(c => c.Lc).Distinct().ToArray(),
-                IrrTypes = items.Select(c => c.Irr).Distinct().ToArray(),
+                EwocCodes = items.Select(c => c.EwocCode).Distinct().ToArray(),
+                //LandCovers = items.Select(c => c.Lc).Distinct().ToArray(),
+                IrrTypes = items.Select(c => c.IrrigationStatus).Distinct().ToArray(),
                 FirstDateOfValidityTime = dateOrderedItems.First().ValidityTime,
-                LastDateOfValidityTime = dateOrderedItems.Last().ValidityTime
+                LastDateOfValidityTime = dateOrderedItems.Last().ValidityTime,
+                AdditionalData = string.Empty,
             };
             return entity;
         }
-        
-        public static CollectionMetadataEntity UpdateMasterCollectionEntity(CollectionMetadataEntity entity,GeometryFactory geometryFactory,
+
+        public static CollectionMetadataEntity UpdateMasterCollectionEntity(CollectionMetadataEntity entity,
+            GeometryFactory geometryFactory,
             Envelope bounds, IList<ItemEntity> items, ShapeGeometryType typeShape, string title,
             TypeOfObservationMethod typeOfObservationMethod, string collectionId)
         {
             var dateOrderedItems = items.OrderBy(x => x.ValidityTime);
             entity.Title = title;
-            entity.TypeOfObservationMethod = typeOfObservationMethod;
             entity.CollectionId = collectionId;
             entity.AccessType = AccessType.Private;
             entity.StoreType = StoreType.Community;
             entity.Type = GetCollectionType(typeShape);
-            entity.Extent = new Polygon(new LinearRing(GetCoordinates(bounds)), geometryFactory);
+            entity.Extent = new Polygon(new LinearRing(VectorHelper.GetCoordinates(bounds)), geometryFactory);
             entity.FeatureCount = items.Count;
-            entity.CropTypes = items.Select(c => c.Ct).Distinct().ToArray();
-            entity.LandCovers = items.Select(c => c.Lc).Distinct().ToArray();
-            entity.IrrTypes = items.Select(c => c.Irr).Distinct().ToArray();
+            entity.EwocCodes = items.Select(c => c.EwocCode).Distinct().ToArray();
+            //entity.LandCovers = items.Select(c => c.Lc).Distinct().ToArray();
+            entity.IrrTypes = items.Select(c => c.IrrigationStatus).Distinct().ToArray();
             entity.FirstDateOfValidityTime = dateOrderedItems.First().ValidityTime;
             entity.LastDateOfValidityTime = dateOrderedItems.Last().ValidityTime;
             return entity;
@@ -197,23 +201,6 @@ namespace IIASA.WorldCereal.Rdm.Jobs.UploadUserDataset
             }
 
             return CollectionType.ClassifiedMap;
-        }
-
-        private static Coordinate[] GetCoordinates(Envelope bounds)
-        {
-            var xmin = bounds.MinX;
-            var ymin = bounds.MinY;
-            var xmax = bounds.MaxX;
-            var ymax = bounds.MaxY;
-
-            return new Coordinate[]
-            {
-                new() {X = xmin, Y = ymin},
-                new() {X = xmax, Y = ymin},
-                new() {X = xmax, Y = ymax},
-                new() {X = xmin, Y = ymax},
-                new() {X = xmin, Y = ymin}
-            };
         }
     }
 }

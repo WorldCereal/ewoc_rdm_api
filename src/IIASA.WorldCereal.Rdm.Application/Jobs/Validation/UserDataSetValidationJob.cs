@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using IIASA.WorldCereal.Rdm.Core;
+using IIASA.WorldCereal.Rdm.Core.Vector;
 using IIASA.WorldCereal.Rdm.Entity;
 using IIASA.WorldCereal.Rdm.Enums;
 using IIASA.WorldCereal.Rdm.Jobs.UploadUserDataset;
@@ -38,19 +38,19 @@ namespace IIASA.WorldCereal.Rdm.Jobs.Validation
         public override async Task ExecuteAsync(ValidationArgs args)
         {
             var userDataset = await _userDatasetRepository.GetAsync(x => x.Id == args.UserDatasetId);
-            VectorFileReader reader = null;
+            VectorFileReader? reader = null;
 
-            _logger.LogInformation($"Validating user dataset-{userDataset.CollectionId}.File- {args.Path}");
+            _logger.LogInformation($"Validating user dataset-{userDataset.CollectionId}.File- {args.VectorFilePath}");
             try
             {
-                reader = VectorFileReader.GetReader(args.Path);
+                reader = VectorFileReader.GetReader(args.VectorFilePath);
                 await Validate(userDataset, reader);
             }
-            catch (Exception)
+            catch (Exception e)
             {
                 userDataset.State = UserDatasetState.ValidationFailedUploadRequired;
-                userDataset.Errors = new[] {"Internal Server Error."};
-            }       
+                userDataset.Errors = ["Internal Server Error.", e.ToString()];
+            }
             finally
             {
                 reader?.Dispose();
@@ -65,7 +65,7 @@ namespace IIASA.WorldCereal.Rdm.Jobs.Validation
         private async Task Validate(UserDataset userDataset, VectorFileReader reader)
         {
             var typeShape = reader.GetShapeGeometryType();
-            var rules = await _validationRulesRepository.Include(x => x.RuleValidValues)
+            var rules = await (await _validationRulesRepository.GetQueryableAsync()).Include(x => x.RuleValidValues)
                 .AsNoTracking().ToListAsync();
             var mandatoryFieldsRules = GetMandatoryFields(typeShape, rules);
 
@@ -127,16 +127,11 @@ namespace IIASA.WorldCereal.Rdm.Jobs.Validation
             {
                 await _backgroundJobManager.EnqueueAsync(new ProvisionUserDataSetJobArgs
                     {
-                        DirectoryPathToClean = args.DirectoryPathToClean,
-                        Path = args.Path,
+                        DatasetExtractedPath = args.DatasetExtractedPath,
+                        VectorFilePath = args.VectorFilePath,
                         UserDatasetId = args.UserDatasetId,
-                        ZipFilePath =  args.ZipFilePath
                     },
-                    delay: TimeSpan.FromMilliseconds(10));
-            }
-            else
-            {
-                Directory.Delete(args.DirectoryPathToClean, true);
+                    delay: TimeSpan.FromSeconds(1));
             }
         }
 
@@ -154,7 +149,7 @@ namespace IIASA.WorldCereal.Rdm.Jobs.Validation
             {
                 // all checks passed, user dataset has no errors.
                 userDataset.State = UserDatasetState.ValidationSuccessfulProvisionInProgressWait;
-                userDataset.Errors = Array.Empty<string>();
+                userDataset.Errors = [];
             }
         }
 
@@ -173,7 +168,7 @@ namespace IIASA.WorldCereal.Rdm.Jobs.Validation
             return new()
             {
                 new IntegerFieldValidator(), new DecimalFieldValidator(), new DateFieldValidator(),
-                new TextFiedlValidator()
+                new TextFiedlValidator(), new BigIntFieldValidator()
             };
         }
 
